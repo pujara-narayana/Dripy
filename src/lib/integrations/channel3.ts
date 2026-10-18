@@ -41,22 +41,13 @@ function storeName(domain: string): string {
   return base.length <= 3 ? base.toUpperCase() : base[0].toUpperCase() + base.slice(1);
 }
 
-/**
- * One product -> one match: the in-stock offer at an allowlisted store if there is one (so
- * checkout can work), else the first in-stock offer, else the first offer.
- */
+/** One product -> one match: its first in-stock offer (else the first offer). */
 export function toMatch(p: Product): RawMatch | null {
   const offers = (p.offers ?? []).filter((o) => o.url && /^https:\/\//.test(o.url));
   const inStock = offers.filter((o) => o.availability !== "OutOfStock");
   // Prefer the offer's domain: its url may be an attributed (affiliate) redirect.
   const domainOf = (o: Offer) => (o.domain ? merchantDomain(`https://${o.domain}`) : null) ?? merchantDomain(o.url);
-  const offer =
-    inStock.find((o) => {
-      const d = domainOf(o);
-      return d != null && env.merchantAllowlist.includes(d);
-    }) ??
-    inStock[0] ??
-    offers[0];
+  const offer = inStock.find((o) => domainOf(o) != null) ?? inStock[0] ?? offers[0];
   if (!offer?.url) return null;
   const domain = domainOf(offer);
   const amount = offer.price?.price ?? offer.price?.amount;

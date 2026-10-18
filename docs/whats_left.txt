@@ -70,6 +70,12 @@ ADDED 2026-10-18
   comparison buy_check made COS the current product).
   To see real product links for the demo garments set DEMO_CATALOG=false (curated matches link
   to store search pages).
+- Later the same day: merchant allowlist removed (any store; checkout still needs a known
+  store domain + https link, the $300 cap, YES approval and the 10-minute TTL). Buy-check no
+  longer SKIPs just because you own 3+ items of that category for the occasion (white linen
+  trousers were SKIPped citing black chinos, beige shorts and jeans); SKIP now needs real
+  near-duplicates, and shorts/skirts never count as dupes of trousers/jeans. The iMessage
+  verdict line now names the item it judged.
 
 ────────────────────────────────────────
 BEFORE ANYTHING ELSE

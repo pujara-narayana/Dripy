@@ -43,18 +43,20 @@ export function merchantDomain(url: string | undefined | null): string | null {
 }
 
 // Store names Google Shopping reports that don't map to "<name>.com".
-const SOURCE_DOMAINS: Record<string, string> = { "levi's": "levi.com", levis: "levi.com", "h&m": "hm.com", "j.crew": "jcrew.com" };
+const SOURCE_DOMAINS: Record<string, string> = {
+  "levi's": "levi.com", levis: "levi.com", "h&m": "hm.com", "j.crew": "jcrew.com", "macy's": "macys.com",
+  "nordstrom rack": "nordstromrack.com", "abercrombie & fitch": "abercrombie.com", "banana republic": "bananarepublic.gap.com",
+};
 
 /**
  * Best guess at a Shopping result's store domain from its store name ("Zara" -> zara.com),
- * used only until the real store link is resolved. Only allowlisted guesses are kept, so a
- * name like "eBay - seller" never turns into a made-up domain.
+ * used only until the real store link is resolved. Only known names and one-word names are
+ * guessed, so "eBay - seller" or "Perfect Tux Shop" never turn into a made-up domain.
  */
 export function domainFromSource(source: string | null | undefined): string | null {
   if (!source) return null;
   const s = source.trim().toLowerCase();
-  const guess = SOURCE_DOMAINS[s] ?? (/^[a-z0-9.&' -]+$/.test(s) ? `${s.replace(/[^a-z0-9]/g, "")}.com` : null);
-  return guess && env.merchantAllowlist.includes(guess) ? guess : null;
+  return SOURCE_DOMAINS[s] ?? (/^[a-z0-9]+$/.test(s) ? `${s}.com` : null);
 }
 
 function cents(value: unknown): number | null {

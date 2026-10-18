@@ -41,10 +41,6 @@ export const env = {
 
   forceFallback: list(process.env.FORCE_FALLBACK),
   purchaseCapCents: Number(process.env.PURCHASE_CAP_CENTS || 30000),
-  merchantAllowlist: list(
-    process.env.MERCHANT_ALLOWLIST ||
-      "zara.com,hm.com,asos.com,nordstrom.com,ssense.com,uniqlo.com,levi.com,mango.com,cos.com,everlane.com",
-  ),
   approvalTtlMinutes: Number(process.env.APPROVAL_TTL_MINUTES || 10),
 
   // When vision identifies a garment that matches a curated demo analysis (same cut and

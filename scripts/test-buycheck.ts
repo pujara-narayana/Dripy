@@ -27,6 +27,18 @@ assert.equal(cos.verdict, "CONSIDER");
 // Empty wardrobe never auto-BUYs.
 assert.equal(scoreCandidate(asCandidate(SEED_ANALYSES[1].matches[0]), []).verdict, "CONSIDER");
 
+// Owning other bottoms for the same occasion isn't a dupe (iMessage test 2026-10-18):
+// linen trousers vs black chinos, beige chino shorts and blue jeans must not SKIP.
+const linen = (color: string) => ({ name: "Linen Trousers", category: "bottom", subcategory: "linen pants", color, occasion_tags: ["smart-casual"], price_cents: 6000, market_median_cents: 19500 });
+for (const color of ["white", "beige"]) {
+  const r = scoreCandidate(linen(color), wardrobe);
+  assert.notEqual(r.verdict, "SKIP", `${color} linen trousers: ${r.headline}`);
+  assert.equal(r.dupes.length, 0, "shorts/chinos/jeans aren't cited as dupes");
+}
+console.log("linen trousers:", scoreCandidate(linen("white"), wardrobe).reasons.join(" | "));
+// A real near-duplicate still skips: black chinos when you own black chinos (and pricier).
+assert.equal(scoreCandidate({ ...linen("black"), name: "Black Chinos", subcategory: "chinos", price_cents: 25000 }, wardrobe).verdict, "SKIP");
+
 // Cited names in reasons[0] are exactly the dupes.
 for (const d of skip.dupes) assert.ok(skip.reasons[0].includes(d.name), `reason cites ${d.name}`);
 console.log("\nall buy-check assertions passed");

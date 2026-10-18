@@ -110,7 +110,7 @@ export async function getOpenIntent(userId: string): Promise<IntentRow | null> {
 
 /**
  * Propose a purchase. Amount, currency and merchant come from the stored match,
- * never from model arguments. Guards: ownership, allowlist, cap, one open intent.
+ * never from model arguments. Guards: ownership, a known store + https link, cap, one open intent.
  */
 export async function createIntent(userId: string, matchId: string): Promise<IntentRow> {
   const match = await getOwnedMatch(userId, matchId);
@@ -118,9 +118,10 @@ export async function createIntent(userId: string, matchId: string): Promise<Int
   if (match.price_cents == null || match.price_cents <= 0) {
     throw new IntentRejected("I couldn't confirm a price for that one, so I won't set up a payment.");
   }
-  if (!match.merchant_domain || !env.merchantAllowlist.includes(match.merchant_domain)) {
+  // Any store is fine, but we must know which one we're paying and link to it securely.
+  if (!match.merchant_domain || !/^https:\/\//.test(match.url)) {
     throw new IntentRejected(
-      `I can only check out at verified stores right now, and ${match.merchant_domain ?? "that site"} isn't one of them.`,
+      "I couldn't tell which store sells that one, so I won't set up a payment. Try another match, or use its link to buy it yourself.",
     );
   }
   if (match.price_cents > env.purchaseCapCents) {

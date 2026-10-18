@@ -31,7 +31,11 @@ function cardText(card: Card, shown: Set<string>): { text: string | null; image:
     case "verdict": {
       const reasons = card.reasons.slice(0, 3).map((r) => `• ${r}`);
       const url = link(card.item.url, shown);
-      return { text: `${VERDICT_ICON[card.verdict]} ${card.verdict}: ${card.headline}\n${reasons.join("\n")}${url ? `\n🛒 ${url}` : ""}`, image: null };
+      const price = card.item.price_cents != null ? ` — ${formatMoney(card.item.price_cents)}` : "";
+      return {
+        text: `${VERDICT_ICON[card.verdict]} ${card.verdict}: ${card.headline}\n(${card.item.name}${price})\n${reasons.join("\n")}${url ? `\n🛒 ${url}` : ""}`,
+        image: null,
+      };
     }
     case "purchase_intent": {
       // The reply already carries "Reply YES to pay…"; add the store link for buying it yourself.

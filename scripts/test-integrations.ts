@@ -236,8 +236,10 @@ async function storeLinks() {
   assert.equal(domainFromSource("Zara"), "zara.com");
   assert.equal(domainFromSource("H&M"), "hm.com");
   assert.equal(domainFromSource("Levi's"), "levi.com");
-  assert.equal(domainFromSource("eBay - somethingwithsole"), null, "non-allowlisted guesses are dropped");
-  assert.equal(domainFromSource("Macy's"), null, "macys.com isn't on the allowlist");
+  assert.equal(domainFromSource("Quince"), "quince.com");
+  assert.equal(domainFromSource("Macy's"), "macys.com");
+  assert.equal(domainFromSource("eBay - somethingwithsole"), null, "multi-word names aren't guessed");
+  assert.equal(domainFromSource("Perfect Tux"), null);
   if (LIVE) return console.log("store links: live run skipped (costs SerpAPI credits)");
 
   const savedKey = env.serpapiKey;
@@ -283,9 +285,14 @@ async function channel3() {
     { url: "https://www.asos.com/p/1", domain: "asos.com", price: { price: 50, currency: "USD" }, availability: "OutOfStock" },
   ]));
   assert.deepEqual(m, {
-    name: "Wool Blazer", brand: "Mango", merchant: "Zara", merchant_domain: "zara.com",
-    url: "https://buy.trychannel3.com/r/abc", image_url: "https://img/1", price_cents: 8990, currency: "USD",
-  }, "in-stock allowlisted offer wins; domain from offer.domain, not the redirect url");
+    name: "Wool Blazer", brand: "Mango", merchant: "Shop", merchant_domain: "shop.example",
+    url: "https://shop.example/blazer", image_url: "https://img/1", price_cents: 12000, currency: "USD",
+  }, "first in-stock offer wins (any store)");
+  const redirect = toMatch(product([
+    { url: "https://www.asos.com/p/1", domain: "asos.com", price: { price: 50 }, availability: "OutOfStock" },
+    { url: "https://buy.trychannel3.com/r/abc", domain: "www.zara.com", price: { amount: 89.9, currency: "USD" }, availability: "InStock" },
+  ]));
+  assert.deepEqual([redirect?.merchant_domain, redirect?.merchant, redirect?.price_cents], ["zara.com", "Zara", 8990], "skips out of stock; domain from offer.domain, not the redirect url");
   assert.equal(toMatch(product([{ url: "https://x.example/a", domain: "x.example", availability: "InStock" }]))?.merchant_domain, "x.example");
   assert.equal(toMatch(product([])), null, "no offers -> no match");
   if (LIVE) return console.log("channel3: live run skipped");

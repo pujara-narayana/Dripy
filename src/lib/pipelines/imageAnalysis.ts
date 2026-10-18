@@ -99,10 +99,10 @@ function build(
 function rankMatches(lens: RawMatch[], shopping: RawMatch[]): RawMatch[] {
   const seen = new Set<string>();
   const out: RawMatch[] = [];
-  // Lens is visually closest; Shopping fills in prices. Priced, allowlisted first.
+  // Visual matches (Lens / Channel3 image search) first; text results fill in. Priced only.
   const all = [...lens, ...shopping].filter((m) => m.url && m.price_cents != null);
   const score = (m: RawMatch) =>
-    (m.merchant_domain && env.merchantAllowlist.includes(m.merchant_domain) ? 0 : 1) + (lens.includes(m) ? 0 : 0.5);
+    (m.merchant_domain ? 0 : 1) + (lens.includes(m) ? 0 : 0.5);
   for (const m of all.sort((a, b) => score(a) - score(b))) {
     const key = `${m.merchant_domain}|${m.name.toLowerCase().slice(0, 40)}`;
     if (seen.has(key)) continue;

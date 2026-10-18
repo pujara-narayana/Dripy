@@ -43,7 +43,7 @@ the stored product match, never from the model. Payment runs only when the user'
 message says yes (deterministic classifier) or they tap Approve. Postgres enforces it:
 `check (status <> 'paid' or approved_by_message_id is not null)`, approval is a
 compare-and-set (a racing button + "yes" can't double-charge), there's a one-open-checkout
-index, a $300 cap, a merchant allowlist, a 10-minute TTL and an append-only
+index, a $300 cap, a known store domain with an https product link (any store; no allowlist since 2026-10-18), a 10-minute TTL and an append-only
 `purchase_intent_events` audit trail.
 
 **Payment rails** (`PAYMENT_PROVIDER`, all behind `src/lib/integrations/payments.ts`):
@@ -158,13 +158,12 @@ real services whose keys are set.
   A shorter Lens timeout, or running Lens and Shopping in parallel, should halve it.
 - **Product search:** Channel3 (`CHANNEL3_API_KEY`) is the primary live source: one image
   search + one text search (for the price median) per photo, each result carrying the store's
-  own product page, domain, price and stock; the in-stock offer at an allowlisted store is
-  preferred. SerpAPI is the fallback when Channel3 is unconfigured, fails or finds nothing.
+  own product page, domain, price and stock; the first in-stock offer is used. SerpAPI is the fallback when Channel3 is unconfigured, fails or finds nothing.
   `DEMO_CATALOG=true` still short-circuits the black bomber / camel blazer to curated matches
   whose links are store *search* pages; set it to `false` for real product links.
 - ~~Live matches have `merchant_domain: null`~~ Fixed (SerpAPI path): the top 3 live Shopping matches are
   resolved to the store's own product page (SerpAPI `google_immersive_product`, ~2–3 s in
-  parallel, 3 extra SerpAPI searches per live photo), and allowlisted store names map to a
+  parallel, 3 extra SerpAPI searches per live photo), and known or one-word store names map to a
   domain before that. A failed lookup keeps the Google Shopping link.
 - **Donations ranking:** open-now beats distance and kind, so late at night the real donation
   drop-off (Goodwill, 6.6 km) fell out of the top 5. "UW Surplus" (university furniture) comes
