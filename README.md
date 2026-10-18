@@ -7,7 +7,8 @@ Dripy knows your closet. Send it a screenshot of something you saw on TikTok and
 to buy it, tells you whether you actually need it (citing what you already own), checks out
 with a Visa card only after you reply YES, and finds places to donate what you don't wear.
 
-- **Backend:** Next.js 16 API routes · Supabase (Postgres + Storage) · Google Gemini · SerpAPI · Stripe (test mode) · Photon (iMessage)
+- **Web app:** Next.js 16 pages in [`src/app/`](src/app) · Tailwind · shadcn/ui (originally designed in Lovable)
+- **Backend:** Next.js 16 API routes (same app) · Supabase (Postgres + Storage) · Google Gemini · SerpAPI · Stripe (test mode) · Photon (iMessage)
 - **API reference and architecture:** [`BACKEND.md`](BACKEND.md)
 - **Response examples for every endpoint:** [`mocks/`](mocks) · TypeScript types: [`src/lib/types.ts`](src/lib/types.ts)
 
@@ -42,6 +43,16 @@ Open **http://localhost:3000/api/health**. With the team env file you should see
 ```
 
 `photon_worker: "down"` is normal unless the iMessage worker is running (see section 4).
+
+### The web app
+
+The UI is served by the same Next.js app: with `npm run dev` running, open
+**http://localhost:3000** (pages: `/`, `/discover`, `/dashboard`, `/about`).
+
+The fairy chat on the home page calls `POST /api/chat`. If that request fails (for example no
+LLM key, or the Gemini quota is used up) it falls back to canned replies labelled "offline".
+Wardrobe, Discover and Dashboard still use the sample data in
+`src/components/proto/photo-clothes.ts`.
 
 ## 2. Try the agent from the terminal
 
@@ -108,6 +119,10 @@ npm run worker   # terminal 2: iMessage bridge → should print "event":"connect
 ## 5. Project map
 
 ```
+src/app/              Web pages (page.tsx per route, layout.tsx = shell + header)
+src/components/       UI: proto/ (Dripy screens and pieces), ui/ (shadcn primitives)
+src/client/           Browser-side helpers: API client (dripy-api.ts), cn()
+public/images/        Garment photos and fairy mascots
 src/app/api/          REST endpoints (chat, wardrobe, reels/analyze, buy-check, purchase-intents, donations, receipts, webhooks)
 src/lib/agent/        Gemini agent loop, tools, system prompt, iMessage text renderer
 src/lib/payments/     Purchase state machine + YES/NO approval router (the "can't spend without you" logic)
@@ -119,7 +134,8 @@ mocks/                Example response for every endpoint
 scripts/              Seed, tests, smoke tests
 ```
 
-Frontend work goes in `src/app/` (pages/components). Please don't edit `src/lib` or
+Frontend work goes in `src/app/` (pages), `src/components/` and `src/client/`. Add shadcn
+components with `npx shadcn add <name>`. Please don't edit `src/lib` or
 `src/app/api` without pinging Narayana; the API contract is shared.
 
 ## 6. Troubleshooting
