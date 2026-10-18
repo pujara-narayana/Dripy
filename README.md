@@ -7,7 +7,7 @@ Dripy knows your closet. Send it a screenshot of something you saw on TikTok and
 to buy it, tells you whether you actually need it (citing what you already own), checks out
 with a Visa card only after you reply YES, and finds places to donate what you don't wear.
 
-- **Backend:** Next.js 16 API routes · Supabase (Postgres + Storage) · Google Gemini · SerpAPI · Stripe (test mode) · Photon (iMessage)
+- **Backend:** Next.js 16 API routes · Supabase (Postgres + Storage) · Google Gemini · SerpAPI · Stripe (test mode) · Photon (iMessage) · Open-Meteo (weather) · Geoapify (donation places) · Gmail (optional)
 - **API reference and architecture:** [`BACKEND.md`](BACKEND.md)
 - **Response examples for every endpoint:** [`mocks/`](mocks) · TypeScript types: [`src/lib/types.ts`](src/lib/types.ts)
 
@@ -38,7 +38,7 @@ npm run dev
 Open **http://localhost:3000/api/health**. With the team env file you should see:
 
 ```json
-{ "llm": "live (gemini)", "database": "live", "serpapi": "live", "payments": "stripe_test", "photon_worker": "down" }
+{ "model": "gemini-3.8-flash", "llm": "live (gemini)", "database": "live", "serpapi": "live", "geoapify": "live", "payments": "stripe_test", "photon_worker": "down" }
 ```
 
 `photon_worker: "down"` is normal unless the iMessage worker is running (see section 4).
@@ -52,7 +52,8 @@ The web chat endpoint is the same brain as iMessage. With `npm run dev` running:
 curl -s localhost:3000/api/chat -H 'content-type: application/json' \
   -d '{"message":"going to a rooftop dinner friday, what should I wear?"}'
 
-# Send a screenshot (any product photo of a black bomber jacket / a camel blazer works)
+# Send a screenshot. A black bomber and a camel blazer hit the curated demo matches (~10 s);
+# any other garment takes the live product-search path (~30 s, see Troubleshooting)
 curl -s localhost:3000/api/chat -F "message=should I buy this?" -F "image=@bomber.png"   # → SKIP
 curl -s localhost:3000/api/chat -F "message=what about this one?" -F "image=@blazer.png" # → BUY
 
@@ -65,10 +66,10 @@ curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"messag
 ```
 
 Each response is `{ reply, cards[], meta }`. `cards` drive the UI (`reel_matches`, `verdict`,
-`purchase_intent`, `payment_confirmation`, `places`, `outfit`); see `BACKEND.md`.
+`purchase_intent`, `payment_confirmation`, `places`, `outfit`, `weather`); see `BACKEND.md`.
 
 Other useful endpoints: `GET /api/wardrobe`, `GET /api/chat/history`,
-`GET /api/donations/nearby?lat=47.6553&lng=-122.3035`.
+`GET /api/donations/nearby?lat=47.6553&lng=-122.3035`, `GET /api/weather?date=friday`.
 
 **Reset the demo** (fresh closet, clears chat and purchases):
 
@@ -88,6 +89,8 @@ wipes everyone's chat history, so give the team a heads-up first.
 | `BASE_URL=http://localhost:3000 npm run test:contract` | Every endpoint returns the documented shape (run with `npm run dev` up) | No |
 | `npm run smoke:gemini` | Live Gemini: JSON output, tool calling, vision | Gemini |
 | `npm run smoke:stripe` | Live Stripe test charge ($1.00, test mode only) | Stripe |
+| `npm run test:integrations` | Weather, Geoapify, Gmail and the image-download guard, with HTTP mocked | No |
+| `npm run test:integrations -- --live` | The same against the real services (read-only; skips any without keys) | The ones you have |
 
 ## 4. iMessage (only one person runs this)
 
@@ -99,11 +102,17 @@ npm run worker   # terminal 2: iMessage bridge → should print "event":"connect
 ```
 
 - **Only one worker may run at a time** for the whole team. Two workers would both reply to
-  every text. If one is already running anywhere, a second one exits with an error.
+  every text. The built-in lock only checks port 8787 on the same machine, so a second worker
+  on another laptop will NOT be stopped: check with the team before starting one.
 - **Only registered numbers can text it** (Photon Free plan). To be added, send Narayana your
   iPhone number in `+1XXXXXXXXXX` format. Photon assigns each user a number to text, so check
   with him which one is yours.
 - Your iPhone must have iMessage on; Google Voice / virtual numbers don't work.
+- iMessage delivers a photo and its caption as **two separate messages**. In the demo, send
+  the photo first (or together), otherwise Dripy answers the text alone ("send me a photo").
+- iMessage only: WhatsApp Business isn't enabled on the Photon project (Photon returns 403).
+  Enabling it later also needs the worker renamed to `.mts`, because the WhatsApp provider
+  package is ESM-only and fails to load from the CommonJS worker.
 
 ## 5. Project map
 
@@ -112,7 +121,7 @@ src/app/api/          REST endpoints (chat, wardrobe, reels/analyze, buy-check, 
 src/lib/agent/        Gemini agent loop, tools, system prompt, iMessage text renderer
 src/lib/payments/     Purchase state machine + YES/NO approval router (the "can't spend without you" logic)
 src/lib/pipelines/    Buy-check scoring, image analysis, receipts, donations
-src/lib/integrations/ Stripe, Visa, SerpAPI, payment-rail switch
+src/lib/integrations/ Stripe, Visa, SerpAPI, Gmail, Open-Meteo weather, payment-rail switch
 worker/               Photon iMessage bridge
 supabase/             SQL migrations, seed data, sample receipt emails
 mocks/                Example response for every endpoint
@@ -129,7 +138,10 @@ Frontend work goes in `src/app/` (pages/components). Please don't edit `src/lib`
 | Every response has `"mode":"simulated"` and `fallbacks: ["mock", "db_unconfigured"]` | `.env.local` is missing or not in the project root. Restart `npm run dev` after adding it. |
 | `Could not find the table … in the schema cache` | Database not set up. In Supabase → SQL Editor run `supabase/migrations/0001_init.sql`, then `0002_stripe.sql`, then `npm run seed`. |
 | `Port 3000 is in use` / `Another Dripy worker is already running` | An old copy is still running. Ctrl+C it, or `kill $(lsof -t -iTCP:3000 -sTCP:LISTEN)` (8787 for the worker). |
-| First reply takes 30–60 s | Known: Gemini's first call is slow. Later calls are faster. Being worked on. |
+| iMessage replies "Ugh, something broke on my end" | The backend caught an error; read the `npm run dev` terminal. On 2026-10-17 it was always Gemini **429 quota**: a free-tier key allows 20 requests/day per model, about one demo run. Use a key whose Google Cloud project has billing on. |
+| Photo replies take ~30 s | Live product search: SerpAPI Google Lens hit its 15 s timeout on every photo tested, then fell back to Shopping search. The demo photos (black bomber, camel blazer) skip that and answer in ~10 s. Fix pending, see `docs/whats_left.txt`. |
+| Gemini `503 UNAVAILABLE` ("high demand") | Google-side overload, worst on free-tier keys. Retry, or temporarily set `GEMINI_MODEL=gemini-3.5-flash`. |
+| Gmail sign-in: "Access blocked … access_denied" | Add your Google account as a **test user** on the OAuth consent screen (Google Auth Platform → Audience). |
 | `npm install -g` fails with `reading 'edgesOut'` | npm bug; add `--legacy-peer-deps`. |
 | Worker: `PHOTON_PROJECT_ID must be the project's UUID` | You have a Photon **beta** (`pho_prj_…`) id. Use the stable project from app.photon.codes. |
 

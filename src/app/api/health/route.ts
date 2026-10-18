@@ -19,6 +19,7 @@ export async function GET() {
     llm: isForced("llm") ? "fallback" : "live (gemini)",
     database: isForced("db") ? "mock" : "live",
     serpapi: isForced("serpapi") ? "fallback" : "live",
+    geoapify: isForced("geoapify") ? "unconfigured (overpass)" : "live",
     overpass: isForced("overpass") ? "fallback(seeded)" : "live+seeded",
     payments: paymentAdapter().mode(),
     photon_worker: photonWorker,

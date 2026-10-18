@@ -36,6 +36,8 @@ function cardSummary(c: Card): string {
       return `[donation places card: ${c.places.map((p) => p.name).join(", ")}]`;
     case "outfit":
       return `[outfit card "${c.title}": ${c.items.map((i) => i.name).join(", ")}]`;
+    case "weather":
+      return `[weather card: ${c.date} ${c.summary}, ${c.high_f}/${c.low_f}F]`;
     default:
       return "";
   }

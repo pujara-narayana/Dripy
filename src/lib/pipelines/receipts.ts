@@ -2,13 +2,15 @@ import "server-only";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { fetchOrderEmails, gmailConfigured } from "@/lib/integrations/gmail";
 import { extract } from "@/lib/llm";
 import { db, must } from "@/lib/db/client";
 import type { RequestMeta } from "@/lib/http";
 import type { WardrobeItem } from "@/lib/types";
 
-// Gmail OAuth isn't wired for the hackathon (no Google credentials), so the "inbox" is
-// five real-format order emails checked into the repo. Parsing them (Gemini) is fully live.
+// The inbox is the user's Gmail when GOOGLE_CLIENT_ID/SECRET + GMAIL_REFRESH_TOKEN are set
+// (npm run gmail:auth); otherwise five real-format order emails checked into the repo.
+// Parsing them (Gemini) is live either way.
 const INBOX_DIR = path.join(process.cwd(), "supabase", "seeds", "receipts");
 
 const ParsedReceipt = z.object({
@@ -68,13 +70,27 @@ export async function listInbox(): Promise<string[]> {
   return (await readdir(INBOX_DIR)).filter((f) => f.endsWith(".eml")).sort();
 }
 
+/** Gmail when configured (falling back on failure), else the seeded inbox. */
+async function loadInbox(meta: RequestMeta): Promise<{ id: string; read: () => Promise<string> }[]> {
+  if (gmailConfigured()) {
+    try {
+      return (await fetchOrderEmails()).map((m) => ({ id: m.id, read: async () => m.raw }));
+    } catch (err) {
+      console.error("gmail failed", err);
+      meta.fallback("gmail");
+    }
+  }
+  meta.fallback("gmail_seeded_inbox");
+  return (await listInbox()).map((f) => ({ id: f, read: () => readFile(path.join(INBOX_DIR, f), "utf8") }));
+}
+
 export async function syncReceipts(
   userId: string,
   opts: { reparse?: boolean },
   meta: RequestMeta,
 ): Promise<{ added: WardrobeItem[]; parsed: number; skipped: number; errors: string[] }> {
-  meta.fallback("gmail_seeded_inbox");
-  const files = await listInbox();
+  const inbox = await loadInbox(meta);
+  const files = inbox.map((m) => m.id);
 
   // On re-parse, keep photos and wear history of items we already knew (matched by name).
   const carry = new Map<string, { image_url: string | null; times_worn: number; last_worn_at: string | null }>();
@@ -97,12 +113,12 @@ export async function syncReceipts(
     }[]).map((r) => r.source_message_id),
   );
 
-  const todo = files.filter((f) => !existing.has(f));
+  const todo = inbox.filter((m) => !existing.has(m.id));
   const errors: string[] = [];
   const results = await Promise.all(
-    todo.map(async (file) => {
+    todo.map(async ({ id: file, read }) => {
       try {
-        const raw = await readFile(path.join(INBOX_DIR, file), "utf8");
+        const raw = await read();
         const parsed = await extract({
           schema: ParsedReceipt,
           system: SYSTEM,

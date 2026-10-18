@@ -152,6 +152,16 @@ export interface PlacesCard {
   nudge?: string | null;
 }
 
+export interface WeatherCard {
+  type: "weather";
+  date: string; // YYYY-MM-DD, Seattle time
+  label: string; // "Today", "Sat"
+  summary: string; // "rain", "partly cloudy"
+  high_f: number;
+  low_f: number;
+  precip_chance: number | null; // %
+}
+
 export interface ErrorCard {
   type: "error";
   message: string;
@@ -164,6 +174,7 @@ export type Card =
   | PurchaseIntentCard
   | PaymentConfirmationCard
   | PlacesCard
+  | WeatherCard
   | ErrorCard;
 
 // ---- API responses ---------------------------------------------------------

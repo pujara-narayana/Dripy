@@ -20,7 +20,8 @@ Next.js 16 route handlers + Supabase + Gemini (`gemini-3.8-flash`, set `GEMINI_M
 
 Tests: `npm test` (buy-check demo beats, approval classifier, hours/geo) ·
 `npm run smoke:gemini` (live Gemini check: JSON output, tool round trip, vision) ·
-`BASE_URL=http://localhost:3000 npm run test:contract` (every endpoint's contract).
+`BASE_URL=http://localhost:3000 npm run test:contract` (every endpoint's contract) ·
+`npm run test:integrations` (weather, Geoapify, Gmail, image-download guard; `-- --live` for real calls).
 
 ## How a message flows
 
@@ -48,9 +49,14 @@ index, a $300 cap, a merchant allowlist, a 10-minute TTL and an append-only
 **Payment rails** (`PAYMENT_PROVIDER`, all behind `src/lib/integrations/payments.ts`):
 `simulated` (default, zero setup) · `stripe` (real Stripe **test-mode** PaymentIntent,
 charged off-session to a saved Visa test card •••• 4242 after the user's YES; live keys are
-refused) · `visa_sandbox` (Visa Intelligent Commerce, needs Visa-issued credentials).
+refused) · `visa_sandbox` (Visa Intelligent Commerce, needs Visa-issued credentials; **not in
+use**: the team chose Stripe test mode, and the adapter's request bodies are unverified).
 Stripe outcomes are also reconciled by a signed webhook at `POST /api/webhooks/stripe`
 (it can only finish an already-approved payment). Check the rail with `npm run smoke:stripe`.
+Local webhook: `stripe listen --forward-to localhost:3000/api/webhooks/stripe --events
+payment_intent.succeeded,payment_intent.payment_failed` prints the `whsec_` for `.env.local`
+(verified: signed events accepted, forged ones rejected); a deployed URL needs its own secret
+from the Stripe dashboard.
 
 ## API contract (for the frontend)
 
@@ -71,10 +77,11 @@ Checked-in examples of every response: `mocks/*.json`. `user_id` defaults to the
 | POST | `/api/purchase-intents/:id/approve` | `{user_id}` | `{status, card: PaymentConfirmationCard, reply, nudge}`; 409 if expired/cancelled |
 | GET | `/api/donations/nearby` | `?lat=&lng=&kind=thrift\|consignment\|donation_dropoff\|recycling` | `{places[], card}` |
 | POST | `/api/receipts/sync` | `{user_id, reparse?: true}` | `{added, receipts_parsed, items[]}` |
+| GET | `/api/weather` | `?lat=&lng=&date=` (YYYY-MM-DD, `today`, `tomorrow` or a weekday; next 7 days) | `{card: WeatherCard}`; 400 outside the week, 503 if Open-Meteo is down |
 | GET | `/api/health` | — | which integrations are live |
 
 Cards the chat can return: `reel_matches`, `verdict`, `purchase_intent`,
-`payment_confirmation`, `places`, `outfit`, `error`. Render `purchase_intent.prompt`
+`payment_confirmation`, `places`, `outfit`, `weather`, `error`. Render `purchase_intent.prompt`
 verbatim near the Approve button (it carries the "simulated" label).
 
 ## Demo runbook
@@ -94,12 +101,60 @@ verbatim near the Approve button (it carries the "simulated" label).
 6. *"yes, where?"* → 3+ nearby places with distance and hours.
 7. Web grid: the blazer now shows with `source: "purchase"`.
 
-Honest labels: Gmail is a seeded inbox of five real-format order emails (parsing is
-live Gemini); payments are Stripe **test mode** on a Visa test card (or `simulated`); the
+Over iMessage, send each photo **before** (or with) its question: iMessage delivers the photo
+and the caption as two messages.
+
+**Last full runs (2026-10-17):**
+- Web chat (`/api/chat`, `gemini-3.5-flash`): all 7 beats passed, 5–11.5 s per reply, real
+  Stripe test charge, blazer landed in the wardrobe.
+- Real iMessage (Photon → worker → backend, `gemini-3.8-flash`, paid key) but with *non-demo*
+  photos (a Celine leather bomber, a grey tuxedo): text replies 5–15 s end to end, photo
+  replies 32–34 s (Lens timeout, see Known issues); the merchant allowlist correctly refused
+  checkout at MensUSA, so nothing was charged. **The demo-photo path hasn't been run over
+  iMessage yet.**
+
+Honest labels: receipts come from a seeded inbox of five real-format order emails unless
+Gmail is configured (parsing is live Gemini either way); payments are Stripe **test mode** on a Visa test card (or `simulated`); the
 approval model mirrors Visa Intelligent Commerce, and `visa_sandbox` plugs into VIC when
 credentials land; Instagram links ask for a screenshot (login wall).
 
+## Optional integrations
+
+- **Weather (Open-Meteo, no key):** the agent's `get_weather` tool runs before `build_outfit`
+  for a specific day, and the chat returns a `weather` card.
+- **Geoapify** (`GEOAPIFY_API_KEY`, free tier): replaces Overpass as the live donation source
+  (same OpenStreetMap data; public Overpass timed out on every request tested); falls back to
+  Overpass, then the seeded list. It only searches `commercial.second_hand`: Geoapify files
+  charity shops (Goodwill etc.) under the generic `commercial` category, where name searches
+  took ~8 s, so the big chains come from the seeded list.
+- **Gmail** (`GOOGLE_CLIENT_ID/SECRET` + `GMAIL_REFRESH_TOKEN` from `npm run gmail:auth`):
+  `/api/receipts/sync` reads up to 10 recent order emails instead of the seeded inbox; falls
+  back to the seeded inbox if Gmail fails. The OAuth client is a Web client with redirect
+  `http://localhost:3000/api/gmail/callback` (stop `npm run dev` while signing in), and your
+  account must be a test user. Testing-mode refresh tokens expire after 7 days. The inbox
+  connected so far has **no clothing orders**, and the parser hasn't been tested on
+  non-clothing receipts, so don't run a real sync against it yet.
+
+`npm run test:integrations` checks all three with mocked HTTP; add `-- --live` to hit the
+real services whose keys are set.
+
+## Known issues (found in the 2026-10-17 runs)
+
+- **Photo replies ~30 s:** `lensMatches` (`src/lib/integrations/serpapi.ts`) waits 15 s for
+  SerpAPI Google Lens, which timed out on every live photo; the Shopping fallback then works.
+  A shorter Lens timeout, or running Lens and Shopping in parallel, should halve it.
+- **Live matches have `merchant_domain: null`**, so the merchant allowlist refuses checkout
+  for any live (non-curated) match, even at an allowed store.
+- **Donations ranking:** open-now beats distance and kind, so late at night the real donation
+  drop-off (Goodwill, 6.6 km) fell out of the top 5. "UW Surplus" (university furniture) comes
+  back from Geoapify as second-hand, and the agent called it a "thrift drop-off".
+- **Reply wording:** at checkout the model's own text said "via Visa" without "test mode" (the
+  card prompt is labeled correctly); the outfit reply said ~50°F while the card showed 57/42.
+- **The YES step takes ~5.4 s with no LLM** (database + Stripe calls).
+- **Gemini resilience:** each call may wait 45 s and retry 3×, so an overloaded model makes
+  replies hang. Option: shorter timeout + fall back to `gemini-3.5-flash` / `3.6-flash`
+  (healthy on 2026-10-17 while 3.8 returned 503s).
+
 ## Not built yet (stretch, in order)
 
-Photo upload auto-tag (`/api/wardrobe/upload`), Style DNA, weather-aware outfits,
-closet cleanout, price-drop watch. Parked: swipe deck, avatar, group chat.
+Photo upload auto-tag (`/api/wardrobe/upload`), Style DNA, closet cleanout, price-drop watch. Parked: swipe deck, avatar, group chat.

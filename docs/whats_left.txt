@@ -1,0 +1,147 @@
+What's left for the hackathon
+Updated 2026-10-17, ~11:15 PM PT, at handoff from Jason to Narayana.
+
+────────────────────────────────────────
+WHERE THINGS STAND
+────────────────────────────────────────
+
+Code: everything below is on the local branch `integrations` (not committed, not pushed).
+Review it before merging; it touches src/lib and src/app/api.
+
+Integrations, all wired and tested on 2026-10-17:
+- Gemini: works. The current key in .env.local has billing on (7 parallel calls all
+  succeeded). Earlier keys were free tier (20 requests/day per model), which is what
+  caused the "Ugh, something broke on my end" iMessage replies.
+- Supabase, SerpAPI: live.
+- Stripe test mode: live. `npm run smoke:stripe` charged $1 on the Visa test card.
+  Webhook verified locally with `stripe listen` (signed event 200, forged ones 400).
+- Open-Meteo weather (new): live, no key. New `get_weather` agent tool, `weather` card,
+  GET /api/weather. The agent checks the forecast before picking an outfit.
+- Geoapify donation places (new, replaces Google Places, which needs billing): live.
+  Public Overpass timed out on every request, so this is the first working live source.
+- Gmail (new, optional): connected read-only and the search works, but the connected inbox
+  has no clothing orders (only flights, games, apps). Receipts still come from the 5 seeded
+  emails unless GMAIL_REFRESH_TOKEN is set.
+- Photon iMessage: the full path works (phone → Photon → worker → backend → reply).
+- Image downloads are now SSRF-safe (https only, public IPs only, checked at connect time
+  and on every redirect, byte cap enforced while streaming).
+- Dropped: Visa Intelligent Commerce (team chose Stripe), Google Places (paid), WhatsApp
+  (not enabled on the Photon project; Photon returns 403).
+
+Full demo runs:
+- Web chat (/api/chat): all 7 beats passed on gemini-3.5-flash, 5–11.5 s per reply:
+  outfit + weather → bomber SKIP → blazer BUY → "ok buy it" → "yes" (real Stripe test charge)
+  → donation places → blazer in wardrobe.
+- Real iMessage on gemini-3.8-flash (paid key), but with NON-demo photos (Celine leather
+  bomber, grey tuxedo): text replies 5–15 s end to end, photo replies 32–34 s. Checkout was
+  correctly refused (MensUSA not on the merchant allowlist), so nothing was charged.
+- NOT yet done: the demo photos (black bomber, camel blazer) over real iMessage.
+  Demo photos used for the web run: AirDrop any product photo of a black MA-1 bomber and a
+  camel blazer; the curated matches kick in from Gemini's live identification.
+
+────────────────────────────────────────
+BEFORE ANYTHING ELSE
+────────────────────────────────────────
+
+- Jason's .env.local temporarily points PHOTON_PROJECT_ID / PHOTON_PROJECT_SECRET at his
+  personal Photon project. Put the team project's values back.
+- The Gmail OAuth client secret was shared in a chat channel. Rotate it after the hackathon.
+- `npm run seed` was run several times tonight; Alex's chat history is clean.
+
+────────────────────────────────────────
+WHAT'S LEFT, IN PRIORITY ORDER
+────────────────────────────────────────
+
+1. Review and merge the `integrations` branch.
+
+2. Run the demo photos over real iMessage once. Send each photo BEFORE its question:
+   iMessage delivers a photo and its caption as two separate messages.
+
+3. Photo reply speed (~30 s). SerpAPI Google Lens hit its 15 s timeout on every live photo,
+   then the Shopping fallback worked. In src/lib/integrations/serpapi.ts `lensMatches`:
+   shorten the timeout or run Lens and Shopping in parallel. Expect ~15 s photo replies.
+   Our own code (database + tools) is only ~1–2 s per reply; the rest is Gemini round
+   trips (each tool use = one more call, 1–3 s each when healthy).
+
+4. Live matches have merchant_domain: null, so checkout is refused for any live
+   (non-curated) match, even at an allowed store. Derive the domain from the product URL.
+
+5. Gemini resilience: each call can wait 45 s and retry 3×, so an overloaded model hangs
+   replies. Shorter timeout + fallback model (gemini-3.5-flash / 3.6-flash were healthy
+   when 3.8 returned 503s).
+
+6. Small fixes from the runs:
+   - Donations: when the user asks to donate, rank donation_dropoff first (late at night
+     open-now sorting pushed Goodwill out of the top 5). Exclude "UW Surplus" (furniture).
+   - The model's checkout text said "via Visa" without "test mode" (the card is labeled).
+   - The outfit reply said ~50°F while the weather card said 57/42.
+   - The YES step takes ~5.4 s with no LLM (database + Stripe calls); worth a look.
+
+7. Deploy to Vercel: copy every .env.local variable (new ones: GEOAPIFY_API_KEY,
+   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REFRESH_TOKEN), create a new Stripe webhook
+   secret for the deployed URL in the dashboard, point the worker's DRIPY_BACKEND_URL at it.
+
+8. Frontend: still the create-next-app placeholder. Chat screen first (renders cards[]),
+   then wardrobe grid. Build against mocks/ and BACKEND.md.
+
+9. Gmail decision: connect an inbox that has clothing orders, email the 5 sample receipts
+   into the connected one, or stay on the seeded inbox. Before any real sync, test the
+   parser on a non-clothing receipt to make sure it adds nothing.
+
+10. Stretch, if time allows: photo-upload tagging, Style DNA, closet cleanout,
+    price-drop alerts. (Weather-aware outfits are done.)
+
+────────────────────────────────────────
+WHAT IT WOULD TAKE FOR REAL USERS
+────────────────────────────────────────
+
+The core architecture holds up: the agent, the tools, the safe payment flow, the iMessage
+bridge and the fallbacks. The gaps:
+
+Area: Buying the item ⚠️ biggest gap
+What's demo-only today: Stripe charges your card, but nothing actually orders the jacket from Zara
+What real use needs: A way to actually complete the order: (a) send the user to the store to check out (simplest, and earns affiliate fees), (b) the newer agent-checkout
+standards (Visa Intelligent Commerce, Stripe/OpenAI's Agentic Commerce Protocol, Shopify), which need each merchant to support them, or (c) Dripy buys on the user's
+behalf, which means fulfillment, returns and money-transmission law
+Effort: (a) days; (b) weeks plus partnerships; (c) months
+────────────────────────────────────────
+Area: Users and login
+What's demo-only today: One hardcoded demo user. Any unknown phone number gets Alex's closet, which would leak data in production. user_id is a plain request parameter.
+What real use needs: Sign-up by phone number, login for the web app, user identity taken from the session, and database-level security rules per user
+Effort: 2–4 days
+────────────────────────────────────────
+Area: Saving cards
+What's demo-only today: A test card attached automatically
+What real use needs: Card entry in the app (Stripe's card form); handling banks that demand extra verification on background charges; refunds
+Effort: 2–3 days
+────────────────────────────────────────
+Area: Getting the closet in
+What's demo-only today: Gmail read-only works for one test user (refresh token in env, expires every 7 days in testing mode); otherwise 5 seeded emails; wear counts are seeded
+What real use needs: Per-user Gmail OAuth with stored tokens, Google's paid security review for public users (weeks), Outlook, product photos, de-duplication, and a way to log
+what you actually wear
+Effort: 1–2 weeks, plus Google's review
+────────────────────────────────────────
+Area: Product results
+What's demo-only today: SerpAPI (scrapes Google, about $0.025 per search) plus curated demo matches; Lens times out often; live matches lack a store domain
+What real use needs: Licensed product feeds (ShopStyle, Rakuten, Impact), live stock and sizes, cost limits per user
+Effort: 1 week
+────────────────────────────────────────
+Area: iMessage
+What's demo-only today: Free plan, shared number; every user must be pre-registered; WhatsApp not enabled
+What real use needs: Photon Business plan with a dedicated number (paid), opt-in and STOP handling, the worker running 24/7, a real single-worker lock (today it only checks a local port)
+Effort: Days, plus cost
+────────────────────────────────────────
+Area: Reliability
+What's demo-only today: Synchronous requests, no queue; a slow Gemini or Lens call makes the whole reply wait
+What real use needs: A job queue with retries, model fallback, usage limits per user, monitoring and alerts
+Effort: 3–5 days
+────────────────────────────────────────
+Area: Security and privacy
+What's demo-only today: Image-URL fetch is now SSRF-safe; otherwise fine for a demo
+What real use needs: Data deletion, a privacy policy, encryption of emails and purchase history, and a broader security review
+Effort: 1 week
+────────────────────────────────────────
+Area: Donations
+What's demo-only today: Geoapify (OpenStreetMap second-hand shops) + 5 seeded Seattle stores; charity chains only from the seeded list
+What real use needs: A source with good charity/donation coverage and accurate hours (Google Places, paid), per-city data
+Effort: 1 day

@@ -41,6 +41,8 @@ function cardText(card: Card): { text: string | null; image: string | null } {
         text: `👕 ${card.title}: ${card.items.map((i) => i.name).join(" + ")}${card.note ? `\n${card.note}` : ""}`,
         image: card.items[0]?.image_url ?? null,
       };
+    case "weather":
+      return { text: `🌦 ${card.label}: ${card.summary}, ${card.high_f}°/${card.low_f}°F${card.precip_chance != null ? `, ${card.precip_chance}% rain` : ""}`, image: null };
     case "error":
       return { text: null, image: null };
   }

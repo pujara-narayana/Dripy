@@ -4,6 +4,7 @@ import { getUser, listWardrobe } from "@/lib/db/queries";
 import { formatMoney, type RequestMeta } from "@/lib/http";
 import { createIntent, intentCard, IntentRejected } from "@/lib/payments/intents";
 import { buyCheck, BuyCheckError } from "@/lib/pipelines/buyCheck";
+import { getForecast } from "@/lib/integrations/weather";
 import { findDonationPlaces } from "@/lib/pipelines/donations";
 import { analyzeImage, analyzeReelUrl, type Analysis, ReelUnsupportedError } from "@/lib/pipelines/imageAnalysis";
 import type { IngestedImage } from "@/lib/storage/ingestImage";
@@ -114,6 +115,17 @@ export const TOOLS: ToolDef[] = [
       },
     },
   },
+  {
+    name: "get_weather",
+    description:
+      "Local forecast for a day in the next week (high/low °F, rain chance). Call it before build_outfit when the user asks what to wear on a specific day, so the outfit fits the weather.",
+    input_schema: {
+      type: "object",
+      properties: {
+        day: { type: "string", description: "'today', 'tomorrow', a weekday like 'friday', or YYYY-MM-DD. Defaults to today." },
+      },
+    },
+  },
 ];
 
 const str = z.string().trim().min(1).max(200);
@@ -125,6 +137,7 @@ const Schemas = {
   buy_check: z.object({ match_id: z.string().optional(), item_desc: z.string().max(500).optional() }),
   create_purchase_intent: z.object({ match_id: z.string().optional() }),
   find_donation_places: z.object({ kind: z.enum(["thrift", "consignment", "donation_dropoff", "recycling"]).optional() }),
+  get_weather: z.object({ day: z.string().max(20).optional() }),
 };
 
 export interface ToolOutcome {
@@ -263,6 +276,17 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
             places: places.map((p) => ({ name: p.name, km: p.distance_km, open_now: p.open_now, kind: p.kind })),
           }),
         };
+      }
+
+      case "get_weather": {
+        const user = await getUser(ctx.userId);
+        const card = await getForecast(
+          { lat: ctx.lat ?? user?.home_lat, lng: ctx.lng ?? user?.home_lng, day: input.day as string | undefined },
+          ctx.meta,
+        );
+        if (!card) return { content: "Forecast unavailable for that day (only the next 7 days are known). Pick an outfit without it and say so briefly.", isError: true };
+        ctx.cards.push(card);
+        return { content: JSON.stringify(card) };
       }
     }
     return { content: `Unhandled tool ${name}`, isError: true };
