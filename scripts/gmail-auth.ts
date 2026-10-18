@@ -1,4 +1,5 @@
-// One-time Gmail sign-in for the demo inbox. Prints a refresh token for .env.local.
+// One-time Gmail sign-in for the demo inbox (read order emails + send demo receipts).
+// Prints a refresh token for .env.local.
 //   npm run gmail:auth
 // Needs GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET from a Google Cloud OAuth client (type "Web
 // application") whose authorized redirect URI is exactly http://localhost:3000/api/gmail/callback,
@@ -8,7 +9,8 @@ import { createServer } from "node:http";
 
 const PORT = 3000;
 const REDIRECT = `http://localhost:${PORT}/api/gmail/callback`;
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+// readonly: order emails for the wardrobe; send: the demo receipt after a purchase.
+const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;

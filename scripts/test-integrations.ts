@@ -6,7 +6,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { env } from "../src/lib/env";
 import { RequestMeta } from "../src/lib/http";
-import { fetchOrderEmails, gmailConfigured, messageToEmail } from "../src/lib/integrations/gmail";
+import { renderForMessaging } from "../src/lib/agent/render";
+import { fetchOrderEmails, gmailConfigured, messageToEmail, sendToSelf } from "../src/lib/integrations/gmail";
+import { domainFromSource, resolveStoreLinks, type RawMatch } from "../src/lib/integrations/serpapi";
+import { buildReceiptEmail, orderNumber, toInboxText, toMime } from "../src/lib/pipelines/purchaseReceipt";
+import type { Card } from "../src/lib/types";
 import { geoapifyPlaces } from "../src/lib/pipelines/donations";
 import { emailToText } from "../src/lib/pipelines/receipts";
 import { fetchImage, isPublicAddress } from "../src/lib/storage/ingestImage";
@@ -227,6 +231,120 @@ async function imageFetch() {
   }
 }
 
+async function storeLinks() {
+  assert.equal(domainFromSource("Zara"), "zara.com");
+  assert.equal(domainFromSource("H&M"), "hm.com");
+  assert.equal(domainFromSource("Levi's"), "levi.com");
+  assert.equal(domainFromSource("eBay - somethingwithsole"), null, "non-allowlisted guesses are dropped");
+  assert.equal(domainFromSource("Macy's"), null, "macys.com isn't on the allowlist");
+  if (LIVE) return console.log("store links: live run skipped (costs SerpAPI credits)");
+
+  const savedKey = env.serpapiKey;
+  try {
+    env.serpapiKey = "test-key";
+    const google = (q: string) => `https://www.google.com/search?ibp=oshop&q=${q}`;
+    const m = (name: string, merchant: string, url: string, token: string | null): RawMatch => ({
+      name, merchant, merchant_domain: null, url, image_url: null, price_cents: 5000, currency: "USD", token,
+    });
+    const calls = mockFetch({
+      "page_token=tok-zara": { product_results: { stores: [
+        { name: "Nordstrom", link: "https://www.nordstrom.com/s/blazer/1", extracted_price: 99 },
+        { name: "Zara", link: "https://www.zara.com/us/en/blazer-p1.html", extracted_price: 79.9 },
+      ] } },
+      "page_token=tok-google-only": { product_results: { stores: [{ name: "x", link: "https://www.google.com/aclk?x" }] } },
+      "page_token=tok-down": new Response("boom", { status: 500 }),
+    });
+    const meta = new RequestMeta();
+    const out = await resolveStoreLinks([
+      m("Blazer", "Zara", google("a"), "tok-zara"),
+      m("Direct", "ASOS", "https://www.asos.com/p/1", "tok-unused"), // already a store link: no lookup
+      m("Odd", "x", google("b"), "tok-google-only"),
+      m("Down", "y", google("c"), "tok-down"),
+    ], meta);
+    assert.equal(calls.length, 3, "only Google links are looked up");
+    assert.ok(calls[0].url.includes("engine=google_immersive_product"));
+    assert.deepEqual([out[0].url, out[0].merchant_domain, out[0].price_cents], ["https://www.zara.com/us/en/blazer-p1.html", "zara.com", 7990], "prefers the listed store");
+    assert.equal(out[1].url, "https://www.asos.com/p/1");
+    assert.equal(out[2].url, google("b"), "never swaps in another Google link");
+    assert.equal(out[3].url, google("c"), "failure keeps the Google link");
+    assert.deepEqual(meta.toMeta().fallbacks, ["serpapi_store_link"]);
+    console.log("store links (mocked): passed");
+  } finally {
+    env.serpapiKey = savedKey;
+  }
+}
+
+function messagingLinks() {
+  const match = (id: string, url: string) => ({ id, name: `Item ${id}`, currency: "USD", price_cents: 5000, merchant_domain: "zara.com", url });
+  const cards: Card[] = [
+    { type: "reel_matches", analysis_id: "a", identified: [{ label: "camel blazer", category: "outerwear" }], matches: [match("1", "https://zara.com/1"), match("2", "https://cos.com/2"), match("3", "https://asos.com/3"), match("4", "https://hm.com/4")] },
+    { type: "verdict", verdict: "BUY", headline: "Fills a gap", item: { name: "Item 1", url: "https://zara.com/1" }, reasons: ["r"], dupes: [], gap_filled: null, price: null },
+  ];
+  const parts = renderForMessaging("Love it — see https://cos.com/2", cards);
+  const details = parts[1].kind === "text" ? parts[1].text : "";
+  assert.ok(details.includes("1. Item 1 — $50.00 at zara.com\nhttps://zara.com/1"), details);
+  assert.ok(details.includes("https://asos.com/3") && !details.includes("https://hm.com/4"), "top 3 only");
+  assert.ok(!details.includes("https://cos.com/2"), "link already in the reply isn't repeated");
+  assert.equal(details.split("https://zara.com/1").length, 2, "verdict doesn't repeat the match link");
+
+  const intent: Card = { type: "purchase_intent", intent_id: "i", item_name: "Item 1", amount_cents: 5000, currency: "USD", merchant_domain: "zara.com", merchant_url: "https://zara.com/1", status: "awaiting_approval", approval_expires_at: null, mode: "stripe_test", prompt: "Reply YES" };
+  assert.ok(renderForMessaging("Reply YES to pay", [intent]).some((p) => p.kind === "text" && p.text.includes("Rather check out yourself? https://zara.com/1")));
+  const paid: Card = { type: "payment_confirmation", intent_id: "i", status: "paid", item_name: "Item 1", amount_cents: 5000, currency: "USD", merchant_domain: "zara.com", reference: "pi_1", mode: "stripe_test", receipt: { retailer: "Zara", emailed: true, wardrobe_item_ids: ["w"] } };
+  assert.ok(renderForMessaging("Done", [paid]).some((p) => p.kind === "text" && p.text.includes("📧 Demo receipt from Zara sent to your inbox")));
+  console.log("messaging links: passed");
+}
+
+async function purchaseReceipt() {
+  const order = {
+    intentId: "4f9c2a1e-0000-4000-8000-000000000abc", userId: "u", customerName: "Alex Rivera",
+    merchantName: "H&M", merchantDomain: "hm.com", merchantUrl: "https://www2.hm.com/en_us/p1.html",
+    item: { name: "Relaxed <Wool> Blazer", brand: null, color: "camel", imageUrl: "https://img.example/b.jpg" },
+    amountCents: 7990, currency: "USD", paidAt: new Date("2026-10-18T07:00:00Z"), reference: "pi_3Test", card: { brand: "visa", last4: "4242" }, mode: "stripe_test" as const,
+  };
+  const e = buildReceiptEmail(order);
+  assert.equal(orderNumber(order.intentId), "DRP-4F9C2A1E");
+  assert.ok(e.subject.includes("H&M order DRP-4F9C2A1E") && e.subject.includes("demo"));
+  assert.ok(e.html.includes("Relaxed &lt;Wool&gt; Blazer"), "item names are HTML-escaped");
+  for (const body of [e.text, e.html]) {
+    assert.ok(body.includes("DEMO RECEIPT") && body.includes("no real order was placed with H&") && body.includes("$79.90"), "labeled demo + amount");
+  }
+  const mime = toMime(e, "alex@example.com");
+  assert.ok(mime.startsWith('From: "H&M via Dripy (demo)" <alex@example.com>\r\nTo: <alex@example.com>'));
+  assert.ok(mime.includes("Content-Type: multipart/alternative") && mime.trimEnd().endsWith("--"));
+  assert.ok(emailToText(toInboxText(e)).includes("Order total | $79.90"), "parser sees the order table");
+
+  const saved = { id: env.googleClientId, secret: env.googleClientSecret, token: env.gmailRefreshToken };
+  try {
+    Object.assign(env, { googleClientId: "cid", googleClientSecret: "secret", gmailRefreshToken: "refresh" });
+    let sentRaw = "";
+    const b64 = (x: string) => Buffer.from(x, "utf8").toString("base64url");
+    const calls = mockFetch({
+      "oauth2.googleapis.com/token": { access_token: "at-1" },
+      "/profile": { emailAddress: "alex@example.com" },
+      "/messages/send": (init?: RequestInit) => {
+        sentRaw = Buffer.from(JSON.parse(String(init?.body)).raw, "base64url").toString("utf8");
+        return { id: "sent1" };
+      },
+      "/messages/sent1": { id: "sent1", payload: { mimeType: "multipart/alternative", headers: [{ name: "Subject", value: e.subject }], parts: [{ mimeType: "text/html", body: { data: b64(e.html) } }] } },
+    });
+    const sent = await sendToSelf((addr) => toMime(e, addr));
+    assert.equal(sent.id, "gmail:sent1");
+    assert.ok(sentRaw.includes("<alex@example.com>") && sentRaw.includes(e.subject));
+    assert.ok(calls.some((c) => c.url.endsWith("/messages/send") && c.init?.method === "POST"));
+    assert.ok(emailToText(sent.raw).includes("Order total | $79.90"), "read-back is what the parser gets");
+
+    mockFetch({
+      "oauth2.googleapis.com/token": { access_token: "at-1" },
+      "/profile": { emailAddress: "alex@example.com" },
+      "/messages/send": new Response('{"error":{"code":403,"message":"Request had insufficient authentication scopes."}}', { status: 403 }),
+    });
+    await assert.rejects(sendToSelf((addr) => toMime(e, addr)), /re-run npm run gmail:auth/);
+    console.log("purchase receipt (mocked): passed");
+  } finally {
+    Object.assign(env, { googleClientId: saved.id, googleClientSecret: saved.secret, gmailRefreshToken: saved.token });
+  }
+}
+
 async function main() {
   const origError = console.error;
   console.error = () => {}; // expected fallback logs
@@ -235,6 +353,9 @@ async function main() {
     await places();
     await gmail();
     await imageFetch();
+    await storeLinks();
+    messagingLinks();
+    await purchaseReceipt();
   } finally {
     console.error = origError;
     globalThis.fetch = realFetch;

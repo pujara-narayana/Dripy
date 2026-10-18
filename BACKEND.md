@@ -51,6 +51,17 @@ index, a $300 cap, a merchant allowlist, a 10-minute TTL and an append-only
 charged off-session to a saved Visa test card •••• 4242 after the user's YES; live keys are
 refused) · `visa_sandbox` (Visa Intelligent Commerce, needs Visa-issued credentials; **not in
 use**: the team chose Stripe test mode, and the adapter's request bodies are unverified).
+**After payment: demo receipt → wardrobe.** The paying request (only the one that wins the
+`approved → paid` transition, or the webhook) builds an order confirmation styled for the
+store the user bought from (`src/lib/pipelines/purchaseReceipt.ts`), emails it to the
+connected Gmail (send-to-self, so it lands in the inbox the receipt sync reads), reads it back
+and parses it with the same Gemini receipt parser as real order emails. The item enters the
+wardrobe with `source: "purchase"` and a `receipt_id`. The email is labeled as a demo in its
+subject, banner and footer, and is sent from the user's own address (the display name is
+"<Store> via Dripy (demo)"). Without Gmail send it stays in-app (`fallbacks: ["gmail_send"]`);
+if parsing fails the item is added directly (`purchase_receipt`). The `payment_confirmation`
+card carries `receipt: {retailer, emailed, wardrobe_item_ids}` on the paying turn.
+
 Stripe outcomes are also reconciled by a signed webhook at `POST /api/webhooks/stripe`
 (it can only finish an already-approved payment). Check the rail with `npm run smoke:stripe`.
 Local webhook: `stripe listen --forward-to localhost:3000/api/webhooks/stripe --events
@@ -129,7 +140,9 @@ credentials land; Instagram links ask for a screenshot (login wall).
   took ~8 s, so the big chains come from the seeded list.
 - **Gmail** (`GOOGLE_CLIENT_ID/SECRET` + `GMAIL_REFRESH_TOKEN` from `npm run gmail:auth`):
   `/api/receipts/sync` reads up to 10 recent order emails instead of the seeded inbox; falls
-  back to the seeded inbox if Gmail fails. The OAuth client is a Web client with redirect
+  back to the seeded inbox if Gmail fails. Scopes are `gmail.readonly` + `gmail.send` (send is
+  only used for the demo purchase receipt, to the account's own address); tokens made before
+  the send scope was added must be re-created with `npm run gmail:auth`. The OAuth client is a Web client with redirect
   `http://localhost:3000/api/gmail/callback` (stop `npm run dev` while signing in), and your
   account must be a test user. Testing-mode refresh tokens expire after 7 days. The inbox
   connected so far has **no clothing orders**, and the parser hasn't been tested on
@@ -143,8 +156,10 @@ real services whose keys are set.
 - **Photo replies ~30 s:** `lensMatches` (`src/lib/integrations/serpapi.ts`) waits 15 s for
   SerpAPI Google Lens, which timed out on every live photo; the Shopping fallback then works.
   A shorter Lens timeout, or running Lens and Shopping in parallel, should halve it.
-- **Live matches have `merchant_domain: null`**, so the merchant allowlist refuses checkout
-  for any live (non-curated) match, even at an allowed store.
+- ~~Live matches have `merchant_domain: null`~~ Fixed: the top 3 live Shopping matches are
+  resolved to the store's own product page (SerpAPI `google_immersive_product`, ~2–3 s in
+  parallel, 3 extra SerpAPI searches per live photo), and allowlisted store names map to a
+  domain before that. A failed lookup keeps the Google Shopping link.
 - **Donations ranking:** open-now beats distance and kind, so late at night the real donation
   drop-off (Goodwill, 6.6 km) fell out of the top 5. "UW Surplus" (university furniture) comes
   back from Geoapify as second-hand, and the agent called it a "thrift drop-off".

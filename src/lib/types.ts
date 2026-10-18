@@ -133,6 +133,11 @@ export interface PaymentConfirmationCard {
   card?: { brand: string; last4: string } | null;
   mode: PaymentMode;
   error?: string;
+  /**
+   * The demo merchant receipt generated after payment (present on the paying turn only).
+   * `emailed`: it landed in the connected Gmail; either way it was parsed into the wardrobe.
+   */
+  receipt?: { retailer: string; emailed: boolean; wardrobe_item_ids: string[] } | null;
 }
 
 export interface Place {

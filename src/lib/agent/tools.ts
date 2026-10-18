@@ -158,6 +158,7 @@ function analysisForModel(a: Analysis) {
       name: m.name,
       store: m.merchant_domain ?? m.merchant,
       price: formatMoney(m.price_cents, m.currency),
+      link: m.url,
     })),
     note: a.matches.length
       ? "Shown to the user as a product card. The first match is now the product under discussion."
@@ -257,6 +258,7 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
             item: intent.item_name,
             amount: formatMoney(intent.amount_cents, intent.currency),
             store: intent.merchant_domain,
+            link: intent.merchant_url,
             payment_mode: intent.mode,
             tell_user: card.prompt,
           }),

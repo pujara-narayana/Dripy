@@ -1,8 +1,9 @@
 import "server-only";
 import { env, isForced } from "@/lib/env";
 
-// Gmail read-only, for the one demo user: a refresh token from `npm run gmail:auth` lives in
-// .env.local, so there's no OAuth flow or token table in the app itself.
+// Gmail for the one demo user: a refresh token from `npm run gmail:auth` lives in .env.local,
+// so there's no OAuth flow or token table in the app itself. Scopes: gmail.readonly (order
+// emails) and gmail.send (Dripy emails the demo receipt of a purchase to the same inbox).
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 // Order confirmations. Promotions ("…your order" marketing) and Gmail's Purchases category
@@ -70,4 +71,27 @@ export async function fetchOrderEmails(max = 10): Promise<{ id: string; raw: str
       return { id: `gmail:${msg.id}`, raw: messageToEmail(msg.payload) };
     }),
   );
+}
+
+/**
+ * Send an email from the connected account to itself, then read it back the way the receipt
+ * sync does. `build` gets the account's address and returns the full RFC 822 message.
+ * A refresh token from before gmail.send was added fails here with 403 (re-run gmail:auth).
+ */
+export async function sendToSelf(build: (address: string) => string): Promise<{ id: string; raw: string }> {
+  const token = await accessToken();
+  const { emailAddress } = await get<{ emailAddress: string }>(token, "/profile");
+  const res = await fetch(`${API}/messages/send`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ raw: Buffer.from(build(emailAddress), "utf8").toString("base64url") }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const hint = res.status === 403 ? " (token lacks gmail.send: re-run npm run gmail:auth)" : "";
+    throw new Error(`gmail send ${res.status}${hint}: ${(await res.text()).slice(0, 200)}`);
+  }
+  const { id } = (await res.json()) as { id: string };
+  const msg = await get<{ id: string; payload: Part }>(token, `/messages/${id}?format=full`);
+  return { id: `gmail:${msg.id}`, raw: messageToEmail(msg.payload) };
 }

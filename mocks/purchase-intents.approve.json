@@ -10,7 +10,12 @@
     "merchant_domain": "zara.com",
     "visa_instruction_id": "sim_instr_7f3c2a9e",
     "visa_transaction_id": "sim_txn_41b8d0c2",
-    "mode": "simulated"
+    "mode": "simulated",
+    "receipt": {
+      "retailer": "Zara",
+      "emailed": false,
+      "wardrobe_item_ids": ["00000000-0000-0000-0002-000000000099"]
+    }
   },
   "meta": {
     "mode": "simulated",

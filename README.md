@@ -57,7 +57,8 @@ curl -s localhost:3000/api/chat -H 'content-type: application/json' \
 curl -s localhost:3000/api/chat -F "message=should I buy this?" -F "image=@bomber.png"   # → SKIP
 curl -s localhost:3000/api/chat -F "message=what about this one?" -F "image=@blazer.png" # → BUY
 
-# Checkout: proposes a purchase, then a real Stripe test-mode charge on a Visa test card
+# Checkout: proposes a purchase, then a real Stripe test-mode charge on a Visa test card.
+# After YES, a demo receipt from the store is emailed to the connected Gmail and parsed into the wardrobe
 curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"ok buy it"}'
 curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"yes"}'
 
@@ -89,7 +90,7 @@ wipes everyone's chat history, so give the team a heads-up first.
 | `BASE_URL=http://localhost:3000 npm run test:contract` | Every endpoint returns the documented shape (run with `npm run dev` up) | No |
 | `npm run smoke:gemini` | Live Gemini: JSON output, tool calling, vision | Gemini |
 | `npm run smoke:stripe` | Live Stripe test charge ($1.00, test mode only) | Stripe |
-| `npm run test:integrations` | Weather, Geoapify, Gmail and the image-download guard, with HTTP mocked | No |
+| `npm run test:integrations` | Weather, Geoapify, Gmail (read + receipt send), store links, iMessage link rendering and the image-download guard, with HTTP mocked | No |
 | `npm run test:integrations -- --live` | The same against the real services (read-only; skips any without keys) | The ones you have |
 
 ## 4. iMessage (only one person runs this)
@@ -142,6 +143,7 @@ Frontend work goes in `src/app/` (pages/components). Please don't edit `src/lib`
 | Photo replies take ~30 s | Live product search: SerpAPI Google Lens hit its 15 s timeout on every photo tested, then fell back to Shopping search. The demo photos (black bomber, camel blazer) skip that and answer in ~10 s. Fix pending, see `docs/whats_left.txt`. |
 | Gemini `503 UNAVAILABLE` ("high demand") | Google-side overload, worst on free-tier keys. Retry, or temporarily set `GEMINI_MODEL=gemini-3.5-flash`. |
 | Gmail sign-in: "Access blocked … access_denied" | Add your Google account as a **test user** on the OAuth consent screen (Google Auth Platform → Audience). |
+| Purchase works but no receipt email arrives (`fallbacks` has `gmail_send`) | The Gmail token is read-only. Stop `npm run dev`, run `npm run gmail:auth`, approve both permissions, and replace `GMAIL_REFRESH_TOKEN`. The item is still added to the wardrobe. |
 | `npm install -g` fails with `reading 'edgesOut'` | npm bug; add `--legacy-peer-deps`. |
 | Worker: `PHOTON_PROJECT_ID must be the project's UUID` | You have a Photon **beta** (`pho_prj_…`) id. Use the stable project from app.photon.codes. |
 

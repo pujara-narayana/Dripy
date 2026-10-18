@@ -6,7 +6,7 @@ import { db, must } from "@/lib/db/client";
 import { setCurrentMatch, type MatchRow } from "@/lib/db/queries";
 import { env, isForced } from "@/lib/env";
 import type { RequestMeta } from "@/lib/http";
-import { lensMatches, medianCents, type RawMatch, shoppingResults } from "@/lib/integrations/serpapi";
+import { lensMatches, medianCents, type RawMatch, resolveStoreLinks, shoppingResults } from "@/lib/integrations/serpapi";
 import { colorSimilarity } from "@/lib/pipelines/buyCheckScore";
 import { fetchImage, ingestImage, type IngestedImage } from "@/lib/storage/ingestImage";
 import type { IdentifiedGarment, ProductMatch, ReelMatchesCard } from "@/lib/types";
@@ -160,7 +160,9 @@ export async function analyzeImage(
       lensMatches(image.publicUrl, meta),
       shoppingResults(primary.search_query, meta),
     ]);
-    ranked = rankMatches(lens, shopping);
+    // Store links only for the matches the user sees (the card and iMessage show 3).
+    const candidates = rankMatches(lens, shopping);
+    ranked = [...(await resolveStoreLinks(candidates.slice(0, 3), meta)), ...candidates.slice(3)];
     median = medianCents(shopping.map((s) => s.price_cents));
   }
 

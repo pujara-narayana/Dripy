@@ -5,8 +5,13 @@ Updated 2026-10-17, ~11:15 PM PT, at handoff from Jason to Narayana.
 WHERE THINGS STAND
 ────────────────────────────────────────
 
-Code: everything below is on the local branch `integrations` (not committed, not pushed).
-Review it before merging; it touches src/lib and src/app/api.
+Code: everything below is on the `integrations` branch (committed and pushed). Reviewed by
+Narayana on 2026-10-18: typecheck, lint and all tests pass. Product links + demo receipt
+email were added on top (see "ADDED 2026-10-18" below).
+
+Deployment plan: only the website (Next.js on Vercel) gets deployed. The Photon iMessage
+worker is NOT deployed; for a live iMessage demo run it on a laptop (`npm run worker`) with
+DRIPY_BACKEND_URL pointed at the deployed site or localhost.
 
 Integrations, all wired and tested on 2026-10-17:
 - Gemini: works. The current key in .env.local has billing on (7 parallel calls all
@@ -40,6 +45,26 @@ Full demo runs:
   camel blazer; the curated matches kick in from Gemini's live identification.
 
 ────────────────────────────────────────
+ADDED 2026-10-18
+────────────────────────────────────────
+
+- Buy links: iMessage replies now list each of the top 3 matches with its link, the verdict
+  and checkout bubbles add the store link ("Rather check out yourself? <link>"), and the
+  model sees the links so "send me the link" works. Live Google Shopping matches are resolved
+  to the store's own product page (SerpAPI immersive product, top 3 only, ~2–3 s in parallel,
+  3 extra SerpAPI searches per live photo); this also fixes the old item #4
+  (merchant_domain: null). The 2 curated demo items still link to store search pages
+  (e.g. zara.com search for "camel blazer"), not a specific product page.
+- Demo receipt email: after the Stripe test charge, Dripy emails an order confirmation styled
+  for the store the user bought from (labeled "demo receipt" in subject, banner and footer,
+  sent from the user's own Gmail to itself), reads it back, parses it with the same receipt
+  parser and saves the item to the wardrobe (source "purchase", linked receipt).
+  Falls back to an in-app receipt without Gmail send, and to a direct add if parsing fails.
+  NOT yet run live: needs `npm run gmail:auth` again (current token is read-only) and a
+  Gemini key with quota (the .env.local key hit the free-tier 20/day cap on 2026-10-17).
+- Response latency: explicitly not a priority (decision 2026-10-18).
+
+────────────────────────────────────────
 BEFORE ANYTHING ELSE
 ────────────────────────────────────────
 
@@ -52,19 +77,21 @@ BEFORE ANYTHING ELSE
 WHAT'S LEFT, IN PRIORITY ORDER
 ────────────────────────────────────────
 
-1. Review and merge the `integrations` branch.
+1. Re-run `npm run gmail:auth` (stop npm run dev first) and approve both permissions, so the
+   token has gmail.send. Then one live purchase: "buy it" → "yes" → receipt email in the
+   inbox → item in GET /api/wardrobe. Re-seed after (it adds the blazer to Alex's closet).
+   Then merge `integrations` into main.
 
 2. Run the demo photos over real iMessage once. Send each photo BEFORE its question:
    iMessage delivers a photo and its caption as two separate messages.
 
-3. Photo reply speed (~30 s). SerpAPI Google Lens hit its 15 s timeout on every live photo,
+3. (Not a priority, 2026-10-18.) Photo reply speed (~30 s). SerpAPI Google Lens hit its 15 s timeout on every live photo,
    then the Shopping fallback worked. In src/lib/integrations/serpapi.ts `lensMatches`:
    shorten the timeout or run Lens and Shopping in parallel. Expect ~15 s photo replies.
    Our own code (database + tools) is only ~1–2 s per reply; the rest is Gemini round
    trips (each tool use = one more call, 1–3 s each when healthy).
 
-4. Live matches have merchant_domain: null, so checkout is refused for any live
-   (non-curated) match, even at an allowed store. Derive the domain from the product URL.
+4. DONE 2026-10-18: live matches resolve to the store's product page and domain.
 
 5. Gemini resilience: each call can wait 45 s and retry 3×, so an overloaded model hangs
    replies. Shorter timeout + fallback model (gemini-3.5-flash / 3.6-flash were healthy
