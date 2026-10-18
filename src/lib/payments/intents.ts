@@ -1,9 +1,10 @@
 import "server-only";
 import { db, must } from "@/lib/db/client";
-import { getOwnedMatch, listWardrobe, setCurrentMatch } from "@/lib/db/queries";
+import { getOwnedMatch, getUser, listWardrobe, type MatchRow, setCurrentMatch } from "@/lib/db/queries";
 import { env } from "@/lib/env";
-import { formatMoney, type RequestMeta } from "@/lib/http";
+import { formatMoney, RequestMeta } from "@/lib/http";
 import { paymentAdapter, paymentLabel, type PaymentMode } from "@/lib/integrations/payments";
+import { deliverPurchaseReceipt } from "@/lib/pipelines/purchaseReceipt";
 import type { IntentStatus, PaymentConfirmationCard, PurchaseIntentCard } from "@/lib/types";
 
 // Purchase-intent state machine. The model can only PROPOSE (createIntent). Moving to
@@ -109,7 +110,7 @@ export async function getOpenIntent(userId: string): Promise<IntentRow | null> {
 
 /**
  * Propose a purchase. Amount, currency and merchant come from the stored match,
- * never from model arguments. Guards: ownership, allowlist, cap, one open intent.
+ * never from model arguments. Guards: ownership, a known store + https link, cap, one open intent.
  */
 export async function createIntent(userId: string, matchId: string): Promise<IntentRow> {
   const match = await getOwnedMatch(userId, matchId);
@@ -117,9 +118,10 @@ export async function createIntent(userId: string, matchId: string): Promise<Int
   if (match.price_cents == null || match.price_cents <= 0) {
     throw new IntentRejected("I couldn't confirm a price for that one, so I won't set up a payment.");
   }
-  if (!match.merchant_domain || !env.merchantAllowlist.includes(match.merchant_domain)) {
+  // Any store is fine, but we must know which one we're paying and link to it securely.
+  if (!match.merchant_domain || !/^https:\/\//.test(match.url)) {
     throw new IntentRejected(
-      `I can only check out at verified stores right now, and ${match.merchant_domain ?? "that site"} isn't one of them.`,
+      "I couldn't tell which store sells that one, so I won't set up a payment. Try another match, or use its link to buy it yourself.",
     );
   }
   if (match.price_cents > env.purchaseCapCents) {
@@ -241,8 +243,8 @@ async function runPayment(intent: IntentRow, meta: RequestMeta): Promise<Payment
     });
     const final = paid ?? (await getIntent(intent.id))!;
     // Only the request that won the approved->paid transition adds the item to the closet.
-    const nudge = paid ? await addPurchaseToWardrobe(paid) : null;
-    return { intent: final, card: confirmationCard(final), nudge };
+    const added = paid ? await addPurchaseToWardrobe(paid, meta) : null;
+    return { intent: final, card: { ...confirmationCard(final), receipt: added?.receipt ?? null }, nudge: added?.nudge ?? null };
   } catch (err) {
     console.error("payment failed", err);
     const failed = await transition(intent, "approved", "failed", "visa_adapter", "system", {
@@ -270,7 +272,7 @@ export async function reconcileProviderOutcome(
       visa_instruction_id: ids.reference,
       visa_transaction_id: ids.transactionId,
     });
-    if (paid) await addPurchaseToWardrobe(paid);
+    if (paid) await addPurchaseToWardrobe(paid, new RequestMeta());
     return paid?.status ?? (await getIntent(intentId))?.status ?? null;
   }
   const failed = await transition(intent, "approved", "failed", "stripe_webhook", "system", {
@@ -279,14 +281,54 @@ export async function reconcileProviderOutcome(
   return failed?.status ?? null;
 }
 
-/** Close the lifecycle: the bought item lands in the closet, then nudge one-in-one-out. */
-async function addPurchaseToWardrobe(intent: IntentRow): Promise<string | null> {
-  if (!intent.match_id) return null;
+/**
+ * Close the lifecycle: the store's (demo) receipt is emailed and parsed into the closet, then
+ * nudge one-in-one-out. If the email or the parser fails, the item is added directly.
+ */
+async function addPurchaseToWardrobe(
+  intent: IntentRow,
+  meta: RequestMeta,
+): Promise<{ nudge: string | null; receipt: PaymentConfirmationCard["receipt"] }> {
+  if (!intent.match_id) return { nudge: null, receipt: null };
   const match = await getOwnedMatch(intent.user_id, intent.match_id);
-  if (!match) return null;
+  if (!match) return { nudge: null, receipt: null };
+
+  let receipt: PaymentConfirmationCard["receipt"] = null;
+  try {
+    const user = await getUser(intent.user_id);
+    const card = (intent.confirmation_json?.card as PaymentConfirmationCard["card"]) ?? null;
+    const r = await deliverPurchaseReceipt(
+      {
+        intentId: intent.id,
+        userId: intent.user_id,
+        customerName: user?.name ?? "there",
+        merchantName: match.merchant ?? intent.merchant_domain,
+        merchantDomain: intent.merchant_domain,
+        merchantUrl: intent.merchant_url,
+        item: { name: match.name, brand: match.brand, color: match.color, imageUrl: match.image_url },
+        amountCents: intent.amount_cents,
+        currency: intent.currency,
+        paidAt: new Date(intent.updated_at),
+        reference: intent.visa_transaction_id ?? intent.visa_instruction_id,
+        card,
+        mode: intent.mode,
+      },
+      meta,
+    );
+    receipt = { retailer: r.retailer, emailed: r.emailed, wardrobe_item_ids: r.items.map((i) => i.id) };
+  } catch (err) {
+    console.error("purchase receipt failed; adding the item directly", err);
+    meta.fallback("purchase_receipt");
+    await insertPurchase(intent.user_id, match);
+  }
+  await setCurrentMatch(intent.user_id, null);
+  return { nudge: await oneInOneOut(intent.user_id, match), receipt };
+}
+
+async function insertPurchase(userId: string, match: MatchRow) {
   must(
     await db().from("wardrobe_items").insert({
-      user_id: intent.user_id,
+      user_id: userId,
       name: match.name,
       brand: match.brand,
       category: match.category ?? "outerwear",
@@ -300,9 +342,10 @@ async function addPurchaseToWardrobe(intent: IntentRow): Promise<string | null> 
     }),
     "add purchase to wardrobe",
   );
-  await setCurrentMatch(intent.user_id, null);
+}
 
-  const sameCategory = (await listWardrobe(intent.user_id, { category: match.category })).filter((w) => w.source !== "purchase");
+async function oneInOneOut(userId: string, match: MatchRow): Promise<string | null> {
+  const sameCategory = (await listWardrobe(userId, { category: match.category })).filter((w) => w.source !== "purchase");
   const leastWorn = [...sameCategory].sort((a, b) => a.times_worn - b.times_worn)[0];
   if (!leastWorn || leastWorn.times_worn > 2) return null;
   const count = sameCategory.length + 1;

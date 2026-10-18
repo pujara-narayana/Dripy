@@ -6,7 +6,8 @@ import { db, must } from "@/lib/db/client";
 import { setCurrentMatch, type MatchRow } from "@/lib/db/queries";
 import { env, isForced } from "@/lib/env";
 import type { RequestMeta } from "@/lib/http";
-import { lensMatches, medianCents, type RawMatch, shoppingResults } from "@/lib/integrations/serpapi";
+import { channel3Configured, imageSearch, textSearch } from "@/lib/integrations/channel3";
+import { lensMatches, medianCents, type RawMatch, resolveStoreLinks, shoppingResults } from "@/lib/integrations/serpapi";
 import { colorSimilarity } from "@/lib/pipelines/buyCheckScore";
 import { fetchImage, ingestImage, type IngestedImage } from "@/lib/storage/ingestImage";
 import type { IdentifiedGarment, ProductMatch, ReelMatchesCard } from "@/lib/types";
@@ -98,10 +99,10 @@ function build(
 function rankMatches(lens: RawMatch[], shopping: RawMatch[]): RawMatch[] {
   const seen = new Set<string>();
   const out: RawMatch[] = [];
-  // Lens is visually closest; Shopping fills in prices. Priced, allowlisted first.
+  // Visual matches (Lens / Channel3 image search) first; text results fill in. Priced only.
   const all = [...lens, ...shopping].filter((m) => m.url && m.price_cents != null);
   const score = (m: RawMatch) =>
-    (m.merchant_domain && env.merchantAllowlist.includes(m.merchant_domain) ? 0 : 1) + (lens.includes(m) ? 0 : 0.5);
+    (m.merchant_domain ? 0 : 1) + (lens.includes(m) ? 0 : 0.5);
   for (const m of all.sort((a, b) => score(a) - score(b))) {
     const key = `${m.merchant_domain}|${m.name.toLowerCase().slice(0, 40)}`;
     if (seen.has(key)) continue;
@@ -155,12 +156,24 @@ export async function analyzeImage(
 
   let ranked: RawMatch[] = [];
   let median: number | null = null;
-  if (primary) {
+  if (primary && channel3Configured()) {
+    // Channel3: results already carry the store's product page, so no link lookups.
+    const [visual, text] = await Promise.all([
+      imageSearch(image.bytes.toString("base64"), meta),
+      textSearch(primary.search_query, meta),
+    ]);
+    ranked = rankMatches(visual, text);
+    median = medianCents(text.map((s) => s.price_cents));
+  }
+  if (primary && !ranked.length) {
+    // SerpAPI when Channel3 is unconfigured or returned nothing.
     const [lens, shopping] = await Promise.all([
       lensMatches(image.publicUrl, meta),
       shoppingResults(primary.search_query, meta),
     ]);
-    ranked = rankMatches(lens, shopping);
+    // Store links only for the matches the user sees (the card and iMessage show 3).
+    const candidates = rankMatches(lens, shopping);
+    ranked = [...(await resolveStoreLinks(candidates.slice(0, 3), meta)), ...candidates.slice(3)];
     median = medianCents(shopping.map((s) => s.price_cents));
   }
 
@@ -186,7 +199,7 @@ export async function analyzeImage(
             analysis_id: inserted.id,
             rank,
             name: m.name,
-            brand: m.merchant,
+            brand: m.brand ?? m.merchant,
             category: primary.category,
             subcategory: primary.subcategory,
             color: primary.color,

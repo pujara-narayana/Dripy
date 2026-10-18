@@ -17,6 +17,7 @@ export const env = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
 
   serpapiKey: process.env.SERPAPI_KEY,
+  channel3Key: process.env.CHANNEL3_API_KEY,
 
   photonWebhookSecret: process.env.PHOTON_WEBHOOK_SECRET,
   photonWorkerUrl: process.env.PHOTON_WORKER_URL,
@@ -40,23 +41,24 @@ export const env = {
 
   forceFallback: list(process.env.FORCE_FALLBACK),
   purchaseCapCents: Number(process.env.PURCHASE_CAP_CENTS || 30000),
-  merchantAllowlist: list(
-    process.env.MERCHANT_ALLOWLIST ||
-      "zara.com,hm.com,asos.com,nordstrom.com,ssense.com,uniqlo.com,levi.com,mango.com,cos.com,everlane.com",
-  ),
   approvalTtlMinutes: Number(process.env.APPROVAL_TTL_MINUTES || 10),
 
   // When vision identifies a garment that matches a curated demo analysis (same cut and
   // color family), serve the curated matches instead of live SerpAPI. Labeled "cached".
   demoCatalog: (process.env.DEMO_CATALOG ?? "true") !== "false",
 
+  geoapifyKey: process.env.GEOAPIFY_API_KEY,
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  gmailRefreshToken: process.env.GMAIL_REFRESH_TOKEN,
   overpassUrl: process.env.OVERPASS_BASE_URL || "https://overpass-api.de/api/interpreter",
+  openMeteoUrl: process.env.OPEN_METEO_BASE_URL || "https://api.open-meteo.com/v1/forecast",
   demoUserId: process.env.DEMO_USER_ID || "00000000-0000-0000-0000-000000000001",
   demoLat: Number(process.env.DEMO_LAT || 47.6553), // UW campus, Seattle
   demoLng: Number(process.env.DEMO_LNG || -122.3035),
 };
 
-export type Integration = "llm" | "db" | "serpapi" | "overpass" | "visa" | "photon" | "tiktok";
+export type Integration = "llm" | "db" | "serpapi" | "overpass" | "visa" | "photon" | "tiktok" | "weather" | "geoapify" | "gmail" | "channel3";
 
 /** True when an integration should be skipped in favor of its fallback. */
 export function isForced(integration: Integration): boolean {
@@ -68,6 +70,12 @@ export function isForced(integration: Integration): boolean {
       return !env.supabaseUrl || !env.supabaseServiceRoleKey;
     case "serpapi":
       return !env.serpapiKey;
+    case "channel3":
+      return !env.channel3Key;
+    case "geoapify":
+      return !env.geoapifyKey;
+    case "gmail":
+      return !env.googleClientId || !env.googleClientSecret || !env.gmailRefreshToken;
     case "photon":
       return !env.photonWorkerUrl || !env.photonWorkerSecret;
     default:

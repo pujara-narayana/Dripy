@@ -4,11 +4,13 @@
 DubHacks 2026 · Visa track
 
 Dripy knows your closet. Send it a screenshot of something you saw on TikTok and it finds where
-to buy it, tells you whether you actually need it (citing what you already own), checks out
-with a Visa card only after you reply YES, and finds places to donate what you don't wear.
+to buy it (real product links, any store), tells you whether you actually need it (citing what
+you already own), checks out with a Visa test card only after you reply YES, emails you the
+store's (demo) receipt and adds the item to your closet, and finds places to donate what you
+don't wear.
 
-- **Web app:** Next.js 16 pages in [`src/app/`](src/app) · Tailwind · shadcn/ui (originally designed in Lovable)
-- **Backend:** Next.js 16 API routes (same app) · Supabase (Postgres + Storage) · Google Gemini · SerpAPI · Stripe (test mode) · Photon (iMessage)
+- **Backend:** Next.js 16 API routes · Supabase (Postgres + Storage) · Google Gemini · Channel3 (product search) · SerpAPI (fallback) · Stripe (test mode) · Photon (iMessage) · Open-Meteo (weather) · Geoapify (donation places) · Gmail (receipts in and out)
+- **Deployment:** only the website goes to Vercel; the iMessage worker runs on a laptop for demos.
 - **API reference and architecture:** [`BACKEND.md`](BACKEND.md)
 - **Response examples for every endpoint:** [`mocks/`](mocks) · TypeScript types: [`src/lib/types.ts`](src/lib/types.ts)
 
@@ -39,7 +41,7 @@ npm run dev
 Open **http://localhost:3000/api/health**. With the team env file you should see:
 
 ```json
-{ "llm": "live (gemini)", "database": "live", "serpapi": "live", "payments": "stripe_test", "photon_worker": "down" }
+{ "model": "gemini-3.8-flash", "llm": "live (gemini)", "database": "live", "product_search": "channel3", "serpapi": "live", "geoapify": "live", "payments": "stripe_test", "photon_worker": "down" }
 ```
 
 `photon_worker: "down"` is normal unless the iMessage worker is running (see section 4).
@@ -63,23 +65,35 @@ The web chat endpoint is the same brain as iMessage. With `npm run dev` running:
 curl -s localhost:3000/api/chat -H 'content-type: application/json' \
   -d '{"message":"going to a rooftop dinner friday, what should I wear?"}'
 
-# Send a screenshot (any product photo of a black bomber jacket / a camel blazer works)
+# Send a screenshot. Live search (Channel3) returns 3 real products with store links, then a
+# verdict: SKIP only if you own a near-duplicate (black bomber → SKIP), BUY if it fills a gap
+# (camel blazer → BUY), otherwise CONSIDER. ~15–30 s.
 curl -s localhost:3000/api/chat -F "message=should I buy this?" -F "image=@bomber.png"   # → SKIP
 curl -s localhost:3000/api/chat -F "message=what about this one?" -F "image=@blazer.png" # → BUY
 
-# Checkout: proposes a purchase, then a real Stripe test-mode charge on a Visa test card
-curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"ok buy it"}'
+# Checkout at any store: proposes a purchase ("Reply YES to pay…"), then a real Stripe
+# test-mode charge on the Visa test card. If several products were discussed, Dripy asks which.
+curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"ok buy the first one"}'
 curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"yes"}'
+# After YES: a demo order confirmation from that store lands in the connected Gmail, is parsed
+# by the receipt parser, and the item shows up in GET /api/wardrobe with source "purchase".
 
 # Donation spots near UW
 curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"where can I donate?"}'
 ```
 
 Each response is `{ reply, cards[], meta }`. `cards` drive the UI (`reel_matches`, `verdict`,
-`purchase_intent`, `payment_confirmation`, `places`, `outfit`); see `BACKEND.md`.
+`purchase_intent`, `payment_confirmation`, `places`, `outfit`, `weather`); see `BACKEND.md`.
+For the website: every product in `reel_matches.matches[]` has a `url` to show as a **Buy**
+link, and on the paying turn `payment_confirmation.receipt` is
+`{retailer, emailed, wardrobe_item_ids}` ("receipt emailed to your inbox").
+
+**Demo catalog switch:** `DEMO_CATALOG=true` pins the black bomber and camel blazer to curated
+matches (same products and verdict every run, but their links are store *search* pages);
+`false` (the team default now) uses live Channel3 results for every photo.
 
 Other useful endpoints: `GET /api/wardrobe`, `GET /api/chat/history`,
-`GET /api/donations/nearby?lat=47.6553&lng=-122.3035`.
+`GET /api/donations/nearby?lat=47.6553&lng=-122.3035`, `GET /api/weather?date=friday`.
 
 **Reset the demo** (fresh closet, clears chat and purchases):
 
@@ -99,6 +113,8 @@ wipes everyone's chat history, so give the team a heads-up first.
 | `BASE_URL=http://localhost:3000 npm run test:contract` | Every endpoint returns the documented shape (run with `npm run dev` up) | No |
 | `npm run smoke:gemini` | Live Gemini: JSON output, tool calling, vision | Gemini |
 | `npm run smoke:stripe` | Live Stripe test charge ($1.00, test mode only) | Stripe |
+| `npm run test:integrations` | Weather, Geoapify, Gmail (read + receipt send), Channel3, SerpAPI store links, iMessage link rendering and the image-download guard, with HTTP mocked | No |
+| `npm run test:integrations -- --live` | The same against the real services (read-only; skips any without keys) | The ones you have |
 
 ## 4. iMessage (only one person runs this)
 
@@ -110,13 +126,37 @@ npm run worker   # terminal 2: iMessage bridge → should print "event":"connect
 ```
 
 - **Only one worker may run at a time** for the whole team. Two workers would both reply to
-  every text. If one is already running anywhere, a second one exits with an error.
+  every text. The built-in lock only checks port 8787 on the same machine, so a second worker
+  on another laptop will NOT be stopped: check with the team before starting one.
 - **Only registered numbers can text it** (Photon Free plan). To be added, send Narayana your
   iPhone number in `+1XXXXXXXXXX` format. Photon assigns each user a number to text, so check
   with him which one is yours.
 - Your iPhone must have iMessage on; Google Voice / virtual numbers don't work.
+- iMessage delivers a photo and its caption as **two separate messages**. In the demo, send
+  the photo first (or together), otherwise Dripy answers the text alone ("send me a photo").
+- What a photo reply looks like: Dripy's take, then the 3 products with price, store and link,
+  the verdict (naming the product it judged), and the product photo. After "buy it" you get
+  "Reply YES to pay…" plus the store link if you'd rather buy it yourself; after YES, only the
+  "Done ✅ Paid …" reply (the receipt goes to Gmail, not to iMessage).
+- iMessage only: WhatsApp Business isn't enabled on the Photon project (Photon returns 403).
+  Enabling it later also needs the worker renamed to `.mts`, because the WhatsApp provider
+  package is ESM-only and fails to load from the CommonJS worker.
 
-## 5. Project map
+## 5. Gmail (receipts in and out, one-time setup)
+
+Dripy uses one Gmail account for the demo user: it reads order emails into the wardrobe
+(`POST /api/receipts/sync`) and, after each purchase, emails itself the store's demo receipt.
+
+1. In `.env.local`: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (ask Narayana).
+2. Stop `npm run dev` (the sign-in borrows port 3000), run `npm run gmail:auth`, open the link,
+   sign in with a Google account that's a **test user** on the OAuth consent screen, and
+   approve **both** permissions (read and send).
+3. Paste the printed `GMAIL_REFRESH_TOKEN=…` into `.env.local` and restart `npm run dev`.
+
+Without Gmail, receipts come from 5 sample emails in `supabase/seeds/receipts/` and the
+purchase receipt stays in the app (it's still parsed into the wardrobe).
+
+## 6. Project map
 
 ```
 src/app/              Web pages (page.tsx per route, layout.tsx = shell + header)
@@ -126,8 +166,8 @@ public/images/        Garment photos and fairy mascots
 src/app/api/          REST endpoints (chat, wardrobe, reels/analyze, buy-check, purchase-intents, donations, receipts, webhooks)
 src/lib/agent/        Gemini agent loop, tools, system prompt, iMessage text renderer
 src/lib/payments/     Purchase state machine + YES/NO approval router (the "can't spend without you" logic)
-src/lib/pipelines/    Buy-check scoring, image analysis, receipts, donations
-src/lib/integrations/ Stripe, Visa, SerpAPI, payment-rail switch
+src/lib/pipelines/    Buy-check scoring, image analysis, receipts (in + demo purchase receipts), donations
+src/lib/integrations/ Stripe, Visa, Channel3, SerpAPI, Gmail, Open-Meteo weather, payment-rail switch
 worker/               Photon iMessage bridge
 supabase/             SQL migrations, seed data, sample receipt emails
 mocks/                Example response for every endpoint
@@ -138,14 +178,22 @@ Frontend work goes in `src/app/` (pages), `src/components/` and `src/client/`. A
 components with `npx shadcn add <name>`. Please don't edit `src/lib` or
 `src/app/api` without pinging Narayana; the API contract is shared.
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Problem | Fix |
 |---|---|
 | Every response has `"mode":"simulated"` and `fallbacks: ["mock", "db_unconfigured"]` | `.env.local` is missing or not in the project root. Restart `npm run dev` after adding it. |
 | `Could not find the table … in the schema cache` | Database not set up. In Supabase → SQL Editor run `supabase/migrations/0001_init.sql`, then `0002_stripe.sql`, then `npm run seed`. |
 | `Port 3000 is in use` / `Another Dripy worker is already running` | An old copy is still running. Ctrl+C it, or `kill $(lsof -t -iTCP:3000 -sTCP:LISTEN)` (8787 for the worker). |
-| First reply takes 30–60 s | Known: Gemini's first call is slow. Later calls are faster. Being worked on. |
+| iMessage replies "Ugh, something broke on my end" | The backend caught an error; read the `npm run dev` terminal. On 2026-10-17 it was always Gemini **429 quota**: a free-tier key allows 20 requests/day per model, about one demo run. Use a key whose Google Cloud project has billing on. |
+| Photo replies take 15–30 s | Expected for now (several Gemini calls plus product search); speed isn't a priority. Slowest when Channel3 is missing or failing and it falls back to SerpAPI (Lens often times out at 15 s). |
+| `fallbacks` contains `channel3` | `CHANNEL3_API_KEY` is missing or wrong, or the free 1,000 calls/month ran out; SerpAPI is used instead. |
+| Product links go to a store **search** page | `DEMO_CATALOG=true` and you sent the black bomber or camel blazer. Set it to `false` for real product pages. |
+| "I couldn't tell which store sells that one" | The match has no known store (only on the SerpAPI fallback path). Pick another match, or use its link to buy it yourself. |
+| Dripy bought a different item than you meant | Say which one ("buy the Zara one"). If more than one product was just mentioned, Dripy should ask; tell Narayana if it didn't. |
+| Gemini `503 UNAVAILABLE` ("high demand") | Google-side overload, worst on free-tier keys. Retry, or temporarily set `GEMINI_MODEL=gemini-3.5-flash`. |
+| Gmail sign-in: "Access blocked … access_denied" | Add your Google account as a **test user** on the OAuth consent screen (Google Auth Platform → Audience). |
+| Purchase works but no receipt email arrives (`fallbacks` has `gmail_send`) | The Gmail token is read-only. Stop `npm run dev`, run `npm run gmail:auth`, approve both permissions, and replace `GMAIL_REFRESH_TOKEN`. The item is still added to the wardrobe. |
 | `npm install -g` fails with `reading 'edgesOut'` | npm bug; add `--legacy-peer-deps`. |
 | Worker: `PHOTON_PROJECT_ID must be the project's UUID` | You have a Photon **beta** (`pho_prj_…`) id. Use the stable project from app.photon.codes. |
 

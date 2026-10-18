@@ -25,17 +25,19 @@ export interface HistoryMessage {
 function cardSummary(c: Card): string {
   switch (c.type) {
     case "reel_matches":
-      return `[product card: ${c.matches.map((m) => `${m.name} at ${m.merchant_domain ?? m.merchant} ${formatMoney(m.price_cents)} (match_id ${m.id})`).join("; ")}]`;
+      return `[product card: ${c.matches.map((m) => `${m.name} at ${m.merchant_domain ?? m.merchant} ${formatMoney(m.price_cents)} (match_id ${m.id}, link ${m.url})`).join("; ")}]`;
     case "verdict":
       return `[verdict card: ${c.verdict} for ${c.item.name}${c.match_id ? ` (match_id ${c.match_id})` : ""}]`;
     case "purchase_intent":
       return `[checkout card: ${c.item_name} ${formatMoney(c.amount_cents)} at ${c.merchant_domain}, status ${c.status}]`;
     case "payment_confirmation":
-      return `[payment ${c.status}: ${c.item_name} ${formatMoney(c.amount_cents)} (${c.mode})]`;
+      return `[payment ${c.status}: ${c.item_name} ${formatMoney(c.amount_cents)} (${c.mode})${c.receipt?.emailed ? `; demo receipt from ${c.receipt.retailer} emailed` : ""}]`;
     case "places":
       return `[donation places card: ${c.places.map((p) => p.name).join(", ")}]`;
     case "outfit":
       return `[outfit card "${c.title}": ${c.items.map((i) => i.name).join(", ")}]`;
+    case "weather":
+      return `[weather card: ${c.date} ${c.summary}, ${c.high_f}/${c.low_f}F]`;
     default:
       return "";
   }

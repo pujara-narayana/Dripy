@@ -21,7 +21,7 @@ function authorized(req: Request): boolean {
   return expected.length > 0 && given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-const CHANNELS: Record<string, Channel> = { imessage: "imessage", sms: "sms", whatsapp: "whatsapp", "whatsapp-business": "whatsapp" };
+const CHANNELS: Record<string, Channel> = { imessage: "imessage", sms: "sms", whatsapp: "whatsapp", "whatsapp-business": "whatsapp", whatsapp_business: "whatsapp" };
 
 export async function POST(req: Request) {
   if (!authorized(req)) return fail(401, "unauthorized");

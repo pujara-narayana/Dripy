@@ -51,7 +51,9 @@ export function parseOsmHours(spec: string | undefined): Hours {
       const i = OSM_ORDER.indexOf(a);
       const j = b ? OSM_ORDER.indexOf(b) : i;
       if (i < 0 || j < 0) continue;
-      for (let k = i; k <= j; k++) out[OSM_DAYS[OSM_ORDER[k]]] = [[m[2], m[3]]];
+      // A midnight close ("12:00-00:00" / "-24:00") would never compare as open; end the day at 23:59.
+      const close = m[3] === "00:00" || m[3] === "24:00" ? "23:59" : m[3];
+      for (let k = i; k <= j; k++) out[OSM_DAYS[OSM_ORDER[k]]] = [[m[2], close]];
     }
   }
   return out;

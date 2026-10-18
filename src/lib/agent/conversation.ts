@@ -63,7 +63,10 @@ function paymentReply(card: Card, nudge: string | null): string {
     const c = card as PaymentConfirmationCard;
     if (c.status === "paid") {
       const card = c.card ? `${c.card.brand.toUpperCase()} •••• ${c.card.last4}, ` : "";
-      return [`Done ✅ Paid ${formatMoney(c.amount_cents, c.currency)} at ${c.merchant_domain} (${card}${paymentLabel(c.mode)}). It's in your closet now.`, nudge]
+      const closet = c.receipt?.emailed
+        ? `Your ${c.receipt.retailer} receipt (demo) just landed in your inbox, and it's in your closet now.`
+        : "It's in your closet now.";
+      return [`Done ✅ Paid ${formatMoney(c.amount_cents, c.currency)} at ${c.merchant_domain} (${card}${paymentLabel(c.mode)}). ${closet}`, nudge]
         .filter(Boolean)
         .join("\n\n");
     }

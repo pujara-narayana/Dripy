@@ -1,5 +1,8 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
+import { type LookupAddress, lookup } from "node:dns";
+import { get as httpsGet } from "node:https";
+import { BlockList, isIP, type LookupFunction } from "node:net";
 import sharp from "sharp";
 import { db } from "@/lib/db/client";
 
@@ -58,11 +61,93 @@ export function decodeDataUrl(dataUrl: string): { bytes: Buffer; mimeType: strin
   return { mimeType: m[1] ?? "application/octet-stream", bytes: Buffer.from(m[3], "base64") };
 }
 
-/** Download a remote image (e.g. a TikTok oEmbed thumbnail) with a size cap. */
-export async function fetchImage(url: string): Promise<{ bytes: Buffer; mimeType: string | null }> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-  if (!res.ok) throw new Error(`image fetch ${res.status}`);
-  const len = Number(res.headers.get("content-length") ?? 0);
-  if (len > MAX_INPUT_BYTES) throw new Error("remote image too large");
-  return { bytes: Buffer.from(await res.arrayBuffer()), mimeType: res.headers.get("content-type") };
+// ---- Remote image fetch (SSRF-safe) ------------------------------------------------
+// URLs come from users (chat attachments) and third parties (TikTok thumbnails), so the
+// server must never be steered at itself or the private network: https only, every
+// resolved address must be public (checked at connect time, so DNS rebinding can't swap
+// in a private IP after the check), redirects re-checked hop by hop, and the body capped.
+
+// Separate lists: one BlockList also matches IPv4 addresses against IPv4-mapped IPv6 rules.
+const PRIVATE4 = new BlockList();
+const PRIVATE6 = new BlockList();
+for (const [net, prefix] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
+  ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 4], ["240.0.0.0", 4],
+] as const) PRIVATE4.addSubnet(net, prefix, "ipv4");
+// IPv4-mapped (::ffff:0:0/96) and NAT64 (64:ff9b::/96) can smuggle any IPv4 address; block them whole.
+for (const [net, prefix] of [["::", 128], ["::1", 128], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8]] as const) {
+  PRIVATE6.addSubnet(net, prefix, "ipv6");
+}
+
+/** True for a routable public IP; false for loopback, private, link-local, metadata, etc. */
+export function isPublicAddress(address: string): boolean {
+  const family = isIP(address);
+  if (family === 0) return false;
+  return family === 4 ? !PRIVATE4.check(address, "ipv4") : !PRIVATE6.check(address, "ipv6");
+}
+
+const safeLookup: LookupFunction = (hostname, options, callback) => {
+  lookup(hostname, { all: true }, (err, addresses) => {
+    if (err) return callback(err, "", 4);
+    const blocked = addresses.find((a) => !isPublicAddress(a.address));
+    if (blocked || addresses.length === 0) {
+      return callback(Object.assign(new Error(`blocked non-public address for ${hostname}`), { code: "EBLOCKED" }), "", 4);
+    }
+    if (options.all) return (callback as unknown as (e: null, a: LookupAddress[]) => void)(null, addresses);
+    callback(null, addresses[0].address, addresses[0].family);
+  });
+};
+
+function checkUrl(raw: string): URL {
+  const url = new URL(raw);
+  if (url.protocol !== "https:") throw new Error("image URL must be https");
+  if (url.username || url.password) throw new Error("image URL must not contain credentials");
+  if (url.port && url.port !== "443") throw new Error("image URL must use the default port");
+  // Node skips the DNS lookup (and so safeLookup) for IP-literal hosts; check those here.
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host) && !isPublicAddress(host)) throw new Error(`blocked non-public address ${host}`);
+  return url;
+}
+
+function getOnce(url: URL, maxBytes: number): Promise<{ status: number; location: string | null; bytes: Buffer; mimeType: string | null }> {
+  return new Promise((resolve, reject) => {
+    const req = httpsGet(url, { lookup: safeLookup, timeout: 10_000, headers: { "user-agent": "Dripy/0.1" } }, (res) => {
+      const status = res.statusCode ?? 0;
+      if (status >= 300 && status < 400) {
+        res.resume();
+        return resolve({ status, location: res.headers.location ?? null, bytes: Buffer.alloc(0), mimeType: null });
+      }
+      if (Number(res.headers["content-length"] ?? 0) > maxBytes) {
+        req.destroy();
+        return reject(new Error("remote image too large"));
+      }
+      const chunks: Buffer[] = [];
+      let size = 0;
+      res.on("data", (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > maxBytes) return req.destroy(new Error("remote image too large"));
+        chunks.push(chunk);
+      });
+      res.on("end", () => resolve({ status, location: null, bytes: Buffer.concat(chunks), mimeType: res.headers["content-type"] ?? null }));
+      res.on("error", reject);
+    });
+    req.on("timeout", () => req.destroy(new Error("image fetch timed out")));
+    req.on("error", reject);
+  });
+}
+
+/** Download a remote image (e.g. a TikTok oEmbed thumbnail), refusing non-public hosts. */
+export async function fetchImage(raw: string, maxBytes = MAX_INPUT_BYTES): Promise<{ bytes: Buffer; mimeType: string | null }> {
+  let url = checkUrl(raw);
+  for (let hop = 0; hop <= 3; hop++) {
+    const res = await getOnce(url, maxBytes);
+    if (res.status >= 300 && res.status < 400) {
+      if (!res.location) throw new Error(`image fetch ${res.status} without location`);
+      url = checkUrl(new URL(res.location, url).toString());
+      continue;
+    }
+    if (res.status < 200 || res.status >= 300) throw new Error(`image fetch ${res.status}`);
+    return { bytes: res.bytes, mimeType: res.mimeType };
+  }
+  throw new Error("image fetch: too many redirects");
 }

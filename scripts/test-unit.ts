@@ -30,6 +30,11 @@ assert.deepEqual(parseOsmHours("by appointment"), {});
 assert.equal(openNow(h, new Date("2026-10-17T22:00:00Z")).open, true);
 assert.equal(openNow(h, new Date("2026-10-18T06:00:00Z")).open, false);
 assert.equal(openNow({}, new Date()).open, null);
+// Closing at midnight: open at 21:30 Saturday (04:30 UTC Sunday).
+const late = parseOsmHours("Mo-Su 12:00-00:00");
+assert.deepEqual(late.sat, [["12:00", "23:59"]]);
+assert.equal(openNow(late, new Date("2026-10-18T04:30:00Z")).open, true);
+assert.deepEqual(parseOsmHours("Fr 18:00-24:00").fri, [["18:00", "23:59"]]);
 const km = haversineKm(47.6553, -122.3035, 47.6618, -122.3131);
 assert.ok(km > 0.8 && km < 1.2, `UW -> Buffalo Exchange ~1km, got ${km}`);
 console.log("hours/geo: passed");

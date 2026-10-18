@@ -133,6 +133,11 @@ export interface PaymentConfirmationCard {
   card?: { brand: string; last4: string } | null;
   mode: PaymentMode;
   error?: string;
+  /**
+   * The demo merchant receipt generated after payment (present on the paying turn only).
+   * `emailed`: it landed in the connected Gmail; either way it was parsed into the wardrobe.
+   */
+  receipt?: { retailer: string; emailed: boolean; wardrobe_item_ids: string[] } | null;
 }
 
 export interface Place {
@@ -152,6 +157,16 @@ export interface PlacesCard {
   nudge?: string | null;
 }
 
+export interface WeatherCard {
+  type: "weather";
+  date: string; // YYYY-MM-DD, Seattle time
+  label: string; // "Today", "Sat"
+  summary: string; // "rain", "partly cloudy"
+  high_f: number;
+  low_f: number;
+  precip_chance: number | null; // %
+}
+
 export interface ErrorCard {
   type: "error";
   message: string;
@@ -164,6 +179,7 @@ export type Card =
   | PurchaseIntentCard
   | PaymentConfirmationCard
   | PlacesCard
+  | WeatherCard
   | ErrorCard;
 
 // ---- API responses ---------------------------------------------------------

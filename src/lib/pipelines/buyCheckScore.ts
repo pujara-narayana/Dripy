@@ -48,18 +48,35 @@ export function colorSimilarity(a?: string | null, b?: string | null): number {
   return fams(x).some((i) => fy.has(i)) ? 0.5 : 0;
 }
 
+// Words for the same cut ("linen pants" vs "trousers").
+const SYNONYMS: [RegExp, string][] = [
+  [/\b(pants|slacks)\b/g, "trousers"],
+  [/\b(trainers?|sneaker)\b/g, "sneakers"],
+  [/\b(tee|t-shirt)\b/g, "tee"],
+];
+// Garment types that never stand in for the rest of their category: shorts don't replace
+// trousers, a skirt doesn't replace jeans.
+const DISTINCT_TYPES = [/\bshorts\b/, /\bskirt\b/];
+
+function cut(s: string | null | undefined): string {
+  return SYNONYMS.reduce((acc, [re, to]) => acc.replace(re, to), norm(s));
+}
+
 export function subcategorySimilarity(c: Candidate, item: WardrobeItem): number {
   if (norm(c.category) !== norm(item.category)) return 0;
-  const a = norm(c.subcategory);
-  const b = norm(item.subcategory);
+  const a = cut(c.subcategory);
+  const b = cut(item.subcategory);
   if (a && b && (a === b || a.includes(b) || b.includes(a))) return 1;
+  if (DISTINCT_TYPES.some((t) => t.test(a) !== t.test(b))) return 0; // shorts vs trousers
   return 0.5; // same category, different cut
 }
 
 /** 0..1 — 1.0 is "basically the same piece". */
 export function similarity(c: Candidate, item: WardrobeItem): number {
   if (norm(c.category) !== norm(item.category)) return 0;
-  return 0.5 * subcategorySimilarity(c, item) + 0.5 * colorSimilarity(c.color, item.color);
+  const sub = subcategorySimilarity(c, item);
+  if (sub === 0) return 0; // a different kind of garment is never a dupe, whatever the color
+  return 0.5 * sub + 0.5 * colorSimilarity(c.color, item.color);
 }
 
 export const NEAR_DUPE = 0.75;
@@ -130,12 +147,6 @@ export function scoreCandidate(c: Candidate, wardrobe: WardrobeItem[]): Score {
     headline = "Skip it — you own something close, for less";
     reasons.push(`You already own ${names(cited.map((x) => x.item))}, which covers the same look.`);
     if (priceLine) reasons.push(priceLine);
-  } else if (!gap && sameCategory.length >= 3) {
-    verdict = "SKIP";
-    cited = sameCategory.slice(0, 3).map((item) => ({ item, s: similarity(c, item) }));
-    headline = `Skip it — you have ${sameCategory.length} of these covered`;
-    reasons.push(`You already own ${names(cited.map((x) => x.item))} for ${occasion ?? "the same occasions"}.`);
-    if (priceLine) reasons.push(priceLine);
   } else if (gap && goodPrice !== false && near.length <= 1) {
     verdict = "BUY";
     cited = sameCategory.slice(0, 3).map((item) => ({ item, s: similarity(c, item) }));
@@ -159,9 +170,14 @@ export function scoreCandidate(c: Candidate, wardrobe: WardrobeItem[]): Score {
   } else {
     verdict = "CONSIDER";
     cited = near.length ? near : [];
-    headline = "Your call";
+    // Owning other things for the same occasion is not a reason to skip: SKIP needs real dupes.
+    headline = cited.length ? "Your call" : "Your call — nothing like it in your closet";
     if (cited.length) reasons.push(`It's close to your ${names(cited.map((x) => x.item))}.`);
-    else reasons.push("Nothing in your closet is too similar, and it doesn't fill an obvious gap.");
+    else {
+      const kind = [c.color, c.subcategory ?? c.category].filter(Boolean).join(" ");
+      reasons.push(`Nothing you own is like it; it'd be your first ${kind}.`);
+      if (occasion) reasons.push(`You're already covered for ${occasion} ${c.category}s, so it's a want, not a need.`);
+    }
     if (priceLine) reasons.push(priceLine);
   }
 

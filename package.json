@@ -13,6 +13,8 @@
     "worker": "node --env-file-if-exists=.env.local --import tsx worker/photon-worker.ts",
     "test": "tsx scripts/test-buycheck.ts && tsx scripts/test-unit.ts",
     "test:contract": "tsx scripts/contract-test.ts",
+    "gmail:auth": "node --env-file-if-exists=.env.local --import tsx scripts/gmail-auth.ts",
+    "test:integrations": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/test-integrations.ts",
     "smoke:gemini": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/smoke-gemini.ts",
     "smoke:stripe": "node --env-file-if-exists=.env.local --import tsx scripts/smoke-stripe.ts"
   },

@@ -2,13 +2,15 @@ import "server-only";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { fetchOrderEmails, gmailConfigured } from "@/lib/integrations/gmail";
 import { extract } from "@/lib/llm";
 import { db, must } from "@/lib/db/client";
 import type { RequestMeta } from "@/lib/http";
 import type { WardrobeItem } from "@/lib/types";
 
-// Gmail OAuth isn't wired for the hackathon (no Google credentials), so the "inbox" is
-// five real-format order emails checked into the repo. Parsing them (Gemini) is fully live.
+// The inbox is the user's Gmail when GOOGLE_CLIENT_ID/SECRET + GMAIL_REFRESH_TOKEN are set
+// (npm run gmail:auth); otherwise five real-format order emails checked into the repo.
+// Parsing them (Gemini) is live either way.
 const INBOX_DIR = path.join(process.cwd(), "supabase", "seeds", "receipts");
 
 const ParsedReceipt = z.object({
@@ -68,16 +70,104 @@ export async function listInbox(): Promise<string[]> {
   return (await readdir(INBOX_DIR)).filter((f) => f.endsWith(".eml")).sort();
 }
 
+export type ParsedReceipt = z.infer<typeof ParsedReceipt>;
+
+/** One raw email (headers + body) -> structured order, via Gemini. */
+export async function parseReceiptEmail(raw: string): Promise<ParsedReceipt> {
+  return extract({
+    schema: ParsedReceipt,
+    system: SYSTEM,
+    parts: [{ text: `<email>\n${emailToText(raw)}\n</email>` }],
+    thinking: "low",
+  });
+}
+
+type Carry = { image_url: string | null; times_worn: number; last_worn_at: string | null };
+
+/**
+ * Store a parsed order and its line items as wardrobe items (linked by receipt_id).
+ * Idempotent per (user, source message). `source`/`imageUrl` let a Dripy purchase mark its
+ * item as "purchase" with the product photo; `carry` keeps wear history on re-parse.
+ */
+export async function saveReceipt(
+  userId: string,
+  sourceMessageId: string,
+  p: ParsedReceipt,
+  opts: { carry?: Map<string, Carry>; source?: "receipt" | "purchase"; imageUrl?: string | null } = {},
+): Promise<WardrobeItem[]> {
+  const receipt = must(
+    await db()
+      .from("receipts")
+      .upsert(
+        {
+          user_id: userId,
+          source_message_id: sourceMessageId,
+          retailer: p.retailer,
+          order_date: /^\d{4}-\d{2}-\d{2}$/.test(p.order_date) ? p.order_date : null,
+          total_cents: Math.round(p.total * 100),
+          currency: p.currency || "USD",
+          parsed_json: p,
+        },
+        { onConflict: "user_id,source_message_id" },
+      )
+      .select("id")
+      .single(),
+    "save receipt",
+  ) as { id: string };
+
+  const rows = p.items.slice(0, 30).map((it, line) => ({
+    user_id: userId,
+    name: it.name,
+    brand: it.brand,
+    category: it.category,
+    subcategory: it.subcategory,
+    color: it.color,
+    size: it.size,
+    price_cents: Math.round(it.price * 100),
+    currency: p.currency || "USD",
+    source: opts.source ?? "receipt",
+    occasion_tags: it.occasion_tags,
+    receipt_id: receipt.id,
+    receipt_line: line + 1,
+    ...(opts.imageUrl && p.items.length === 1 ? { image_url: opts.imageUrl } : {}),
+    ...(opts.carry?.get(it.name.toLowerCase()) ?? {}),
+  }));
+  if (rows.length === 0) return [];
+  return must(
+    await db()
+      .from("wardrobe_items")
+      .upsert(rows, { onConflict: "receipt_id,receipt_line", ignoreDuplicates: true })
+      .select(
+        "id,name,brand,category,subcategory,color,size,price_cents,currency,source,occasion_tags,image_url,times_worn,last_worn_at,created_at",
+      ),
+    "save receipt items",
+  ) as WardrobeItem[];
+}
+
+/** Gmail when configured (falling back on failure), else the seeded inbox. */
+async function loadInbox(meta: RequestMeta): Promise<{ id: string; read: () => Promise<string> }[]> {
+  if (gmailConfigured()) {
+    try {
+      return (await fetchOrderEmails()).map((m) => ({ id: m.id, read: async () => m.raw }));
+    } catch (err) {
+      console.error("gmail failed", err);
+      meta.fallback("gmail");
+    }
+  }
+  meta.fallback("gmail_seeded_inbox");
+  return (await listInbox()).map((f) => ({ id: f, read: () => readFile(path.join(INBOX_DIR, f), "utf8") }));
+}
+
 export async function syncReceipts(
   userId: string,
   opts: { reparse?: boolean },
   meta: RequestMeta,
 ): Promise<{ added: WardrobeItem[]; parsed: number; skipped: number; errors: string[] }> {
-  meta.fallback("gmail_seeded_inbox");
-  const files = await listInbox();
+  const inbox = await loadInbox(meta);
+  const files = inbox.map((m) => m.id);
 
   // On re-parse, keep photos and wear history of items we already knew (matched by name).
-  const carry = new Map<string, { image_url: string | null; times_worn: number; last_worn_at: string | null }>();
+  const carry = new Map<string, Carry>();
   if (opts.reparse) {
     const prior = must(
       await db()
@@ -97,18 +187,12 @@ export async function syncReceipts(
     }[]).map((r) => r.source_message_id),
   );
 
-  const todo = files.filter((f) => !existing.has(f));
+  const todo = inbox.filter((m) => !existing.has(m.id));
   const errors: string[] = [];
   const results = await Promise.all(
-    todo.map(async (file) => {
+    todo.map(async ({ id: file, read }) => {
       try {
-        const raw = await readFile(path.join(INBOX_DIR, file), "utf8");
-        const parsed = await extract({
-          schema: ParsedReceipt,
-          system: SYSTEM,
-          parts: [{ text: `<email>\n${emailToText(raw)}\n</email>` }],
-          thinking: "low",
-        });
+        const parsed = await parseReceiptEmail(await read());
         return { file, parsed };
       } catch (err) {
         errors.push(`${file}: ${err instanceof Error ? err.message : String(err)}`);
@@ -122,54 +206,7 @@ export async function syncReceipts(
   for (const r of results) {
     if (!r || !r.parsed.is_order_confirmation) continue;
     parsedCount++;
-    const p = r.parsed;
-    const receipt = must(
-      await db()
-        .from("receipts")
-        .upsert(
-          {
-            user_id: userId,
-            source_message_id: r.file,
-            retailer: p.retailer,
-            order_date: /^\d{4}-\d{2}-\d{2}$/.test(p.order_date) ? p.order_date : null,
-            total_cents: Math.round(p.total * 100),
-            currency: p.currency || "USD",
-            parsed_json: p,
-          },
-          { onConflict: "user_id,source_message_id" },
-        )
-        .select("id")
-        .single(),
-      "save receipt",
-    ) as { id: string };
-
-    const rows = p.items.slice(0, 30).map((it, line) => ({
-      user_id: userId,
-      name: it.name,
-      brand: it.brand,
-      category: it.category,
-      subcategory: it.subcategory,
-      color: it.color,
-      size: it.size,
-      price_cents: Math.round(it.price * 100),
-      currency: p.currency || "USD",
-      source: "receipt",
-      occasion_tags: it.occasion_tags,
-      receipt_id: receipt.id,
-      receipt_line: line + 1,
-      ...(carry.get(it.name.toLowerCase()) ?? {}),
-    }));
-    if (rows.length === 0) continue;
-    const inserted = must(
-      await db()
-        .from("wardrobe_items")
-        .upsert(rows, { onConflict: "receipt_id,receipt_line", ignoreDuplicates: true })
-        .select(
-          "id,name,brand,category,subcategory,color,size,price_cents,currency,source,occasion_tags,image_url,times_worn,last_worn_at,created_at",
-        ),
-      "save receipt items",
-    ) as WardrobeItem[];
-    added.push(...inserted);
+    added.push(...(await saveReceipt(userId, r.file, r.parsed, { carry })));
   }
   return { added, parsed: parsedCount, skipped: existing.size, errors };
 }
