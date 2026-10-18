@@ -7,6 +7,7 @@ import path from "node:path";
 import { env } from "../src/lib/env";
 import { RequestMeta } from "../src/lib/http";
 import { renderForMessaging } from "../src/lib/agent/render";
+import { imageSearch, textSearch, toMatch } from "../src/lib/integrations/channel3";
 import { fetchOrderEmails, gmailConfigured, messageToEmail, sendToSelf } from "../src/lib/integrations/gmail";
 import { domainFromSource, resolveStoreLinks, type RawMatch } from "../src/lib/integrations/serpapi";
 import { buildReceiptEmail, orderNumber, toInboxText, toMime } from "../src/lib/pipelines/purchaseReceipt";
@@ -274,6 +275,46 @@ async function storeLinks() {
   }
 }
 
+async function channel3() {
+  const product = (offers: object[]) => ({ id: "p1", title: "Wool Blazer", brands: [{ name: "Mango" }], images: [{ url: "https://img/2" }, { url: "https://img/1", is_main_image: true }], offers });
+  const m = toMatch(product([
+    { url: "https://shop.example/blazer", domain: "shop.example", price: { price: 120, currency: "USD" }, availability: "InStock" },
+    { url: "https://buy.trychannel3.com/r/abc", domain: "www.zara.com", price: { amount: 89.9, currency: "USD" }, availability: "InStock" },
+    { url: "https://www.asos.com/p/1", domain: "asos.com", price: { price: 50, currency: "USD" }, availability: "OutOfStock" },
+  ]));
+  assert.deepEqual(m, {
+    name: "Wool Blazer", brand: "Mango", merchant: "Zara", merchant_domain: "zara.com",
+    url: "https://buy.trychannel3.com/r/abc", image_url: "https://img/1", price_cents: 8990, currency: "USD",
+  }, "in-stock allowlisted offer wins; domain from offer.domain, not the redirect url");
+  assert.equal(toMatch(product([{ url: "https://x.example/a", domain: "x.example", availability: "InStock" }]))?.merchant_domain, "x.example");
+  assert.equal(toMatch(product([])), null, "no offers -> no match");
+  if (LIVE) return console.log("channel3: live run skipped");
+
+  const saved = env.channel3Key;
+  try {
+    env.channel3Key = "c3-key";
+    const calls = mockFetch({
+      "/v1/image-search": { products: [product([{ url: "https://www.cos.com/p/9", domain: "cos.com", price: { price: 175 }, availability: "InStock" }])] },
+      "/v1/search": { products: [] },
+    });
+    const meta = new RequestMeta();
+    const rows = await imageSearch("QUJD", meta);
+    assert.equal(rows[0].url, "https://www.cos.com/p/9");
+    assert.equal((calls[0].init?.headers as Record<string, string>)["x-api-key"], "c3-key");
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { base64_image: "QUJD", limit: 20 });
+    assert.deepEqual(await textSearch("camel blazer", meta), []);
+    assert.equal(meta.toMeta().fallback_used, false);
+
+    mockFetch({ "/v1/image-search": new Response('{"detail":"Invalid API key"}', { status: 401 }) });
+    const failMeta = new RequestMeta();
+    assert.deepEqual(await imageSearch("QUJD", failMeta), [], "errors fall back (SerpAPI path)");
+    assert.deepEqual(failMeta.toMeta().fallbacks, ["channel3"]);
+    console.log("channel3 (mocked): passed");
+  } finally {
+    env.channel3Key = saved;
+  }
+}
+
 function messagingLinks() {
   const match = (id: string, url: string) => ({ id, name: `Item ${id}`, currency: "USD", price_cents: 5000, merchant_domain: "zara.com", url });
   const cards: Card[] = [
@@ -290,7 +331,7 @@ function messagingLinks() {
   const intent: Card = { type: "purchase_intent", intent_id: "i", item_name: "Item 1", amount_cents: 5000, currency: "USD", merchant_domain: "zara.com", merchant_url: "https://zara.com/1", status: "awaiting_approval", approval_expires_at: null, mode: "stripe_test", prompt: "Reply YES" };
   assert.ok(renderForMessaging("Reply YES to pay", [intent]).some((p) => p.kind === "text" && p.text.includes("Rather check out yourself? https://zara.com/1")));
   const paid: Card = { type: "payment_confirmation", intent_id: "i", status: "paid", item_name: "Item 1", amount_cents: 5000, currency: "USD", merchant_domain: "zara.com", reference: "pi_1", mode: "stripe_test", receipt: { retailer: "Zara", emailed: true, wardrobe_item_ids: ["w"] } };
-  assert.ok(renderForMessaging("Done", [paid]).some((p) => p.kind === "text" && p.text.includes("📧 Demo receipt from Zara sent to your inbox")));
+  assert.deepEqual(renderForMessaging("Done ✅ Paid", [paid]), [{ kind: "text", text: "Done ✅ Paid" }], "no ref/receipt bubble after paying");
   console.log("messaging links: passed");
 }
 
@@ -354,6 +395,7 @@ async function main() {
     await gmail();
     await imageFetch();
     await storeLinks();
+    await channel3();
     messagingLinks();
     await purchaseReceipt();
   } finally {

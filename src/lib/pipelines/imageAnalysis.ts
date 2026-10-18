@@ -6,6 +6,7 @@ import { db, must } from "@/lib/db/client";
 import { setCurrentMatch, type MatchRow } from "@/lib/db/queries";
 import { env, isForced } from "@/lib/env";
 import type { RequestMeta } from "@/lib/http";
+import { channel3Configured, imageSearch, textSearch } from "@/lib/integrations/channel3";
 import { lensMatches, medianCents, type RawMatch, resolveStoreLinks, shoppingResults } from "@/lib/integrations/serpapi";
 import { colorSimilarity } from "@/lib/pipelines/buyCheckScore";
 import { fetchImage, ingestImage, type IngestedImage } from "@/lib/storage/ingestImage";
@@ -155,7 +156,17 @@ export async function analyzeImage(
 
   let ranked: RawMatch[] = [];
   let median: number | null = null;
-  if (primary) {
+  if (primary && channel3Configured()) {
+    // Channel3: results already carry the store's product page, so no link lookups.
+    const [visual, text] = await Promise.all([
+      imageSearch(image.bytes.toString("base64"), meta),
+      textSearch(primary.search_query, meta),
+    ]);
+    ranked = rankMatches(visual, text);
+    median = medianCents(text.map((s) => s.price_cents));
+  }
+  if (primary && !ranked.length) {
+    // SerpAPI when Channel3 is unconfigured or returned nothing.
     const [lens, shopping] = await Promise.all([
       lensMatches(image.publicUrl, meta),
       shoppingResults(primary.search_query, meta),
@@ -188,7 +199,7 @@ export async function analyzeImage(
             analysis_id: inserted.id,
             rank,
             name: m.name,
-            brand: m.merchant,
+            brand: m.brand ?? m.merchant,
             category: primary.category,
             subcategory: primary.subcategory,
             color: primary.color,

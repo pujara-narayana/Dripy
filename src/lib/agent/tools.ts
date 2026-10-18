@@ -99,7 +99,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "create_purchase_intent",
     description:
-      "Prepare a Visa checkout for a matched product the user explicitly asked to buy. Does NOT pay: the user must reply YES. Omit match_id to use the product currently under discussion.",
+      "Prepare a Visa checkout for a matched product the user explicitly asked to buy. Does NOT pay: the user must reply YES. Pass the match_id of the product the user chose; omit it only when exactly one product is under discussion.",
     input_schema: {
       type: "object",
       properties: { match_id: { type: "string" } },

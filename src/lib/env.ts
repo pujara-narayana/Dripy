@@ -17,6 +17,7 @@ export const env = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
 
   serpapiKey: process.env.SERPAPI_KEY,
+  channel3Key: process.env.CHANNEL3_API_KEY,
 
   photonWebhookSecret: process.env.PHOTON_WEBHOOK_SECRET,
   photonWorkerUrl: process.env.PHOTON_WORKER_URL,
@@ -61,7 +62,7 @@ export const env = {
   demoLng: Number(process.env.DEMO_LNG || -122.3035),
 };
 
-export type Integration = "llm" | "db" | "serpapi" | "overpass" | "visa" | "photon" | "tiktok" | "weather" | "geoapify" | "gmail";
+export type Integration = "llm" | "db" | "serpapi" | "overpass" | "visa" | "photon" | "tiktok" | "weather" | "geoapify" | "gmail" | "channel3";
 
 /** True when an integration should be skipped in favor of its fallback. */
 export function isForced(integration: Integration): boolean {
@@ -73,6 +74,8 @@ export function isForced(integration: Integration): boolean {
       return !env.supabaseUrl || !env.supabaseServiceRoleKey;
     case "serpapi":
       return !env.serpapiKey;
+    case "channel3":
+      return !env.channel3Key;
     case "geoapify":
       return !env.geoapifyKey;
     case "gmail":

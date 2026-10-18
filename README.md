@@ -38,7 +38,7 @@ npm run dev
 Open **http://localhost:3000/api/health**. With the team env file you should see:
 
 ```json
-{ "model": "gemini-3.8-flash", "llm": "live (gemini)", "database": "live", "serpapi": "live", "geoapify": "live", "payments": "stripe_test", "photon_worker": "down" }
+{ "model": "gemini-3.8-flash", "llm": "live (gemini)", "database": "live", "product_search": "channel3", "serpapi": "live", "geoapify": "live", "payments": "stripe_test", "photon_worker": "down" }
 ```
 
 `photon_worker: "down"` is normal unless the iMessage worker is running (see section 4).

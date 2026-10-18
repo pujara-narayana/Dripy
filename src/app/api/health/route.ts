@@ -18,6 +18,7 @@ export async function GET() {
     model: env.model,
     llm: isForced("llm") ? "fallback" : "live (gemini)",
     database: isForced("db") ? "mock" : "live",
+    product_search: isForced("channel3") ? (isForced("serpapi") ? "fallback" : "serpapi") : "channel3",
     serpapi: isForced("serpapi") ? "fallback" : "live",
     geoapify: isForced("geoapify") ? "unconfigured (overpass)" : "live",
     overpass: isForced("overpass") ? "fallback(seeded)" : "live+seeded",

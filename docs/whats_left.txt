@@ -63,6 +63,13 @@ ADDED 2026-10-18
   NOT yet run live: needs `npm run gmail:auth` again (current token is read-only) and a
   Gemini key with quota (the .env.local key hit the free-tier 20/day cap on 2026-10-17).
 - Response latency: explicitly not a priority (decision 2026-10-18).
+- iMessage test 2026-10-18 (camel blazer → buy → YES → COS receipt email) worked end to end.
+  Follow-ups done: Channel3 product search added (real product links; SerpAPI fallback), the
+  "🧾 Ref … / 📧 receipt" bubble after paying removed, and the agent now asks which product
+  when "buy it" is ambiguous (it had charged COS after recommending Zara, because its
+  comparison buy_check made COS the current product).
+  To see real product links for the demo garments set DEMO_CATALOG=false (curated matches link
+  to store search pages).
 
 ────────────────────────────────────────
 BEFORE ANYTHING ELSE

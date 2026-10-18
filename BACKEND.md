@@ -156,7 +156,13 @@ real services whose keys are set.
 - **Photo replies ~30 s:** `lensMatches` (`src/lib/integrations/serpapi.ts`) waits 15 s for
   SerpAPI Google Lens, which timed out on every live photo; the Shopping fallback then works.
   A shorter Lens timeout, or running Lens and Shopping in parallel, should halve it.
-- ~~Live matches have `merchant_domain: null`~~ Fixed: the top 3 live Shopping matches are
+- **Product search:** Channel3 (`CHANNEL3_API_KEY`) is the primary live source: one image
+  search + one text search (for the price median) per photo, each result carrying the store's
+  own product page, domain, price and stock; the in-stock offer at an allowlisted store is
+  preferred. SerpAPI is the fallback when Channel3 is unconfigured, fails or finds nothing.
+  `DEMO_CATALOG=true` still short-circuits the black bomber / camel blazer to curated matches
+  whose links are store *search* pages; set it to `false` for real product links.
+- ~~Live matches have `merchant_domain: null`~~ Fixed (SerpAPI path): the top 3 live Shopping matches are
   resolved to the store's own product page (SerpAPI `google_immersive_product`, ~2–3 s in
   parallel, 3 extra SerpAPI searches per live photo), and allowlisted store names map to a
   domain before that. A failed lookup keeps the Google Shopping link.

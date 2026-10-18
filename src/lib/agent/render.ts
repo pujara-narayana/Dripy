@@ -39,17 +39,7 @@ function cardText(card: Card, shown: Set<string>): { text: string | null; image:
       return { text: url ? `Rather check out yourself? ${url}` : null, image: null };
     }
     case "payment_confirmation":
-      return card.status === "paid"
-        ? {
-            text: [
-              `🧾 Ref ${card.reference ?? card.visa_transaction_id ?? card.visa_instruction_id}${card.mode === "simulated" ? " (simulated)" : card.mode === "stripe_test" ? " (Stripe test mode)" : ""}`,
-              card.receipt?.emailed ? `📧 Demo receipt from ${card.receipt.retailer} sent to your inbox` : null,
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            image: null,
-          }
-        : { text: null, image: null };
+      return { text: null, image: null }; // the reply already says paid + receipt; refs stay in the web card
     case "places": {
       const lines = card.places.slice(0, 3).map((p) => {
         const hours = p.open_now === true ? `open now, ${p.hours_today}` : p.hours_today ?? "hours unknown";

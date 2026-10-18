@@ -4,6 +4,8 @@ import type { RequestMeta } from "@/lib/http";
 
 export interface RawMatch {
   name: string;
+  /** Product brand when the source knows it (Channel3); else the store name is used. */
+  brand?: string | null;
   merchant: string | null;
   merchant_domain: string | null;
   url: string;
