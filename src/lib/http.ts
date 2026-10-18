@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { Meta, Mode } from "@/lib/types";
 import { env, isForced } from "@/lib/env";
+import { sessionUserFromCookieHeader } from "@/lib/tokens";
 
 /**
  * Tracks which integrations fell back during one request, so `meta` is honest about
@@ -65,6 +66,14 @@ export function fallbackToMock(): string | null {
 
 export function userIdFrom(value: unknown): string {
   return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value) ? value : env.demoUserId;
+}
+
+/**
+ * The user a request acts for: the signed-in web session if there is one, otherwise the
+ * `user_id` it sent (or the demo user), so curl and the contract tests keep working.
+ */
+export function requestUserId(req: Request, fallback: unknown): string {
+  return sessionUserFromCookieHeader(req.headers.get("cookie")) ?? userIdFrom(fallback);
 }
 
 export async function readJson(req: Request): Promise<Record<string, unknown>> {

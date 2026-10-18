@@ -71,7 +71,7 @@ export default function About() {
             ))}
           </ol>
           <Button asChild className="mt-10 rounded-full bg-dot px-8 text-dot-foreground hover:bg-dot/90">
-            <Link href="/">Meet your fairy</Link>
+            <Link href="/signup">Meet your fairy</Link>
           </Button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { connection, type NextRequest } from "next/server";
 import { db, must } from "@/lib/db/client";
 import { listWardrobe } from "@/lib/db/queries";
-import { fail, mockResponse, ok, RequestMeta, fallbackToMock, userIdFrom } from "@/lib/http";
+import { fail, mockResponse, ok, RequestMeta, fallbackToMock, requestUserId } from "@/lib/http";
 import type { WardrobeItem } from "@/lib/types";
 
 // GET /api/wardrobe?user_id=&category=&brand=&occasion=&source=&wishlist=true -> WardrobeResponse
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const meta = new RequestMeta();
   try {
     const sp = req.nextUrl.searchParams;
-    const userId = userIdFrom(sp.get("user_id"));
+    const userId = requestUserId(req, sp.get("user_id"));
     let items: WardrobeItem[];
     if (sp.get("wishlist") === "true") {
       const rows = must(

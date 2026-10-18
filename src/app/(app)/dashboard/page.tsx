@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ArrowUpRight, Footprints, Heart, Shirt, Sparkles, TrendingUp } from "lucide-react";
-import { photoClothes } from "@/components/proto/photo-clothes";
+import { catalog as photoClothes } from "@/data/catalog";
 
 export const metadata: Metadata = {
   title: "Wardrobe stats",

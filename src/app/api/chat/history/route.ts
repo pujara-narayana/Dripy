@@ -1,6 +1,6 @@
 import { connection, type NextRequest } from "next/server";
 import { db, must } from "@/lib/db/client";
-import { fail, mockResponse, ok, RequestMeta, fallbackToMock, userIdFrom } from "@/lib/http";
+import { fail, mockResponse, ok, RequestMeta, fallbackToMock, requestUserId } from "@/lib/http";
 import type { ChatHistoryResponse } from "@/lib/types";
 
 // GET /api/chat/history?user_id=&limit=50 -> ChatHistoryResponse (oldest first)
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       await db()
         .from("chat_messages")
         .select("id,channel,direction,body,attachments,cards,created_at")
-        .eq("user_id", userIdFrom(sp.get("user_id")))
+        .eq("user_id", requestUserId(req, sp.get("user_id")))
         .order("created_at", { ascending: false })
         .limit(limit),
       "load history",

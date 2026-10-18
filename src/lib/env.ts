@@ -53,6 +53,13 @@ export const env = {
   gmailRefreshToken: process.env.GMAIL_REFRESH_TOKEN,
   overpassUrl: process.env.OVERPASS_BASE_URL || "https://overpass-api.de/api/interpreter",
   openMeteoUrl: process.env.OPEN_METEO_BASE_URL || "https://api.open-meteo.com/v1/forecast",
+  // Public URL of this app, used in links Dripy texts to people (checkout, wardrobe).
+  appUrl: (process.env.APP_URL || process.env.DRIPY_BACKEND_URL || "http://localhost:3000").replace(/\/$/, ""),
+  // Signs session cookies and checkout/login links. Falls back to a key derived from the
+  // service-role key so a half-configured .env still works; set SESSION_SECRET in production.
+  sessionSecret: process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "dripy-dev-session-secret",
+  // The phone number or Apple ID people text to reach Dripy (the Photon line), e.g. +12065550123.
+  imessageHandle: process.env.DRIPY_IMESSAGE_HANDLE || "",
   demoUserId: process.env.DEMO_USER_ID || "00000000-0000-0000-0000-000000000001",
   demoLat: Number(process.env.DEMO_LAT || 47.6553), // UW campus, Seattle
   demoLng: Number(process.env.DEMO_LNG || -122.3035),

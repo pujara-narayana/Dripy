@@ -49,12 +49,18 @@ Open **http://localhost:3000/api/health**. With the team env file you should see
 ### The web app
 
 The UI is served by the same Next.js app: with `npm run dev` running, open
-**http://localhost:3000** (pages: `/`, `/discover`, `/dashboard`, `/about`).
+**http://localhost:3000**. Signed-out visitors land on `/welcome` (sign up / log in); the app
+pages (`/`, `/recommended`, `/donate`, `/dashboard`) need a session (`src/proxy.ts`).
 
-The fairy chat on the home page calls `POST /api/chat`. If that request fails (for example no
-LLM key, or the Gemini quota is used up) it falls back to canned replies labelled "offline".
-Wardrobe, Discover and Dashboard still use the sample data in
-`src/components/proto/photo-clothes.ts`.
+Demo flow: sign up with name, Gmail and phone → "Open iMessage" sends the start code → Dripy
+greets you with a wardrobe link → buy something (iMessage or the Recommended page): the first
+time you enter a Visa test card on `/checkout/:id`, after that it's one tap → the item lands in
+your closet with its photo → donate pieces on `/donate` and get the nearest drop-off in chat.
+
+Extra setup for this: run `supabase/migrations/0003_demo_card.sql`, and set
+`DRIPY_IMESSAGE_HANDLE` (the Dripy line), `APP_URL` and `SESSION_SECRET` (see `.env.example`).
+If the chat API fails (no LLM key, Gemini quota used up) the web chat falls back to canned
+replies labelled "offline". The dashboard still shows sample stats.
 
 ## 2. Try the agent from the terminal
 
@@ -159,7 +165,8 @@ purchase receipt stays in the app (it's still parsed into the wardrobe).
 ## 6. Project map
 
 ```
-src/app/              Web pages (page.tsx per route, layout.tsx = shell + header)
+src/app/(app)/        Signed-in pages; src/app/(public)/ welcome, sign-up, log-in, checkout, about
+src/data/catalog.ts   Clothing catalog: starter closet + shop (shared by pages and backend)
 src/components/       UI: proto/ (Dripy screens and pieces), ui/ (shadcn primitives)
 src/client/           Browser-side helpers: API client (dripy-api.ts), cn()
 public/images/        Garment photos and fairy mascots

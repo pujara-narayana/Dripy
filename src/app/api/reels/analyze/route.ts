@@ -1,4 +1,4 @@
-import { fail, mockResponse, ok, RequestMeta, fallbackToMock, userIdFrom } from "@/lib/http";
+import { fail, mockResponse, ok, RequestMeta, fallbackToMock, requestUserId } from "@/lib/http";
 import { analyzeImage, analyzeReelUrl, ReelUnsupportedError } from "@/lib/pipelines/imageAnalysis";
 import { readChatRequest } from "@/lib/storage/attachments";
 
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const meta = new RequestMeta();
   try {
     const input = await readChatRequest(req);
-    const userId = userIdFrom(input.userId);
+    const userId = requestUserId(req, input.userId);
     const url = typeof input.extra.url === "string" ? input.extra.url : null;
     let analysis;
     if (input.images[0]) analysis = await analyzeImage(userId, input.images[0], meta);

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, Manrope } from "next/font/google";
-import { AppHeader } from "@/components/proto/AppHeader";
 import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
@@ -29,7 +28,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${instrumentSerif.variable} ${manrope.variable}`}>
       <body>
         <div className="theme-muse flex h-dvh flex-col overflow-hidden bg-background font-body text-foreground">
-          <AppHeader />
           {children}
         </div>
       </body>

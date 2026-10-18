@@ -4,6 +4,7 @@ import { renderForMessaging } from "@/lib/agent/render";
 import { getUserByPhone } from "@/lib/db/queries";
 import { env, isForced } from "@/lib/env";
 import { fail, ok, RequestMeta } from "@/lib/http";
+import { greetNewUser } from "@/lib/onboarding";
 import { ingestAttachments } from "@/lib/storage/attachments";
 import type { Channel } from "@/lib/types";
 
@@ -32,6 +33,12 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const sender = typeof body.sender === "string" ? body.sender : "";
+    const channel = CHANNELS[String(body.platform ?? "imessage")] ?? "imessage";
+    const text = typeof body.text === "string" ? body.text : "";
+    const externalId = typeof body.external_id === "string" ? body.external_id : null;
+    // First text after web sign-up ("Hi Dripy! My code is …"): link the sender and greet.
+    const greeting = await greetNewUser({ sender, text, channel, externalId });
+    if (greeting) return ok({ parts: greeting.parts, duplicate: greeting.duplicate }, meta, "/api/messages/inbound", { route_taken: "greeting" });
     // Shared-pool numbers can change per conversation; unknown senders map to the demo user.
     const user = sender ? await getUserByPhone(sender) : null;
     const userId = user?.id ?? env.demoUserId;
@@ -39,10 +46,10 @@ export async function POST(req: Request) {
     const turn = await handleTurn(
       {
         userId,
-        channel: CHANNELS[String(body.platform ?? "imessage")] ?? "imessage",
-        text: typeof body.text === "string" ? body.text : "",
+        channel,
+        text,
         images,
-        externalId: typeof body.external_id === "string" ? body.external_id : null,
+        externalId,
       },
       meta,
     );

@@ -90,6 +90,32 @@ Checked-in examples of every response: `mocks/*.json`. `user_id` defaults to the
 | POST | `/api/receipts/sync` | `{user_id, reparse?: true}` | `{added, receipts_parsed, items[]}` |
 | GET | `/api/weather` | `?lat=&lng=&date=` (YYYY-MM-DD, `today`, `tomorrow` or a weekday; next 7 days) | `{card: WeatherCard}`; 400 outside the week, 503 if Open-Meteo is down |
 | GET | `/api/health` | — | which integrations are live |
+| POST | `/api/auth/signup` | `{name, email, phone}` | `{user, imessage: {handle, body, url}, created}` + session cookie; creates the starter closet |
+| POST | `/api/auth/login` | `{phone}` | `{user, imessage}` + session cookie (demo: no password) |
+| POST | `/api/auth/logout` · GET `/api/auth/me` | — | clear the cookie · current user or 401 |
+| GET | `/auth/link` | `?t=` (login token) | the wardrobe link in the iMessage greeting: signs the browser in, redirects to `/` |
+| GET | `/api/shop` | — | `{items[]}` catalog pieces the user doesn't own, shuffled |
+| POST | `/api/shop/buy` | `{product_id}` | `{id, status, card, saved_card}`; `card.needs_card` → send them to `card.checkout_url` |
+| GET | `/api/checkout/:id` | `?t=` (or session) | `{checkout}` summary for the card page |
+| POST | `/api/checkout/:id` | `{t?, card?: {number, exp, cvc, name}}` | validates a Visa card (keeps brand + last 4), then pays via the approve path |
+| POST | `/api/wardrobe/donate` | `{item_ids[], lat?, lng?}` | removes the pieces, posts nearest drop-offs to the chat (web + iMessage) |
+
+**Web accounts (demo).** The session is a signed cookie (`SESSION_SECRET`), no password. Every
+route above uses the signed-in user when there is one, else `user_id` / the demo user, so curl
+and the contract tests still work. A new account gets the starter closet from
+`src/data/catalog.ts` (`source: "seed"`). Run `supabase/migrations/0003_demo_card.sql` for the
+card on file.
+
+**First purchase vs. later ones.** With no card on file, a purchase prompt is
+"add your Visa card here: <signed checkout link>" and a chat "yes" re-sends that link instead of
+paying. After the card page saves a card (brand + last 4 only), prompts become
+"Reply YES to pay … with VISA •••• 4242" and the web shows a one-tap Approve.
+
+**iMessage onboarding.** Sign-up pre-fills "Hi Dripy! My code is ABC123". The inbound route
+spots the code, links that sender's phone to the account and replies with a fixed greeting and
+a one-tap wardrobe login link (no LLM call). The worker keeps each sender's conversation and
+exposes `POST /send` (same `x-dripy-worker-secret`), so the backend can message someone after a
+web checkout or donation; it only reaches people who texted since the worker started.
 
 Cards the chat can return: `reel_matches`, `verdict`, `purchase_intent`,
 `payment_confirmation`, `places`, `outfit`, `weather`, `error`. Render `purchase_intent.prompt`

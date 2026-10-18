@@ -9,6 +9,7 @@ import { findDonationPlaces } from "@/lib/pipelines/donations";
 import { analyzeImage, analyzeReelUrl, type Analysis, ReelUnsupportedError } from "@/lib/pipelines/imageAnalysis";
 import type { IngestedImage } from "@/lib/storage/ingestImage";
 import type { Card, Channel } from "@/lib/types";
+import { getSavedCard } from "@/lib/users";
 
 export interface ToolContext {
   userId: string;
@@ -250,7 +251,7 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
         const matchId = (input.match_id as string | undefined) ?? user?.current_match_id;
         if (!matchId) return { content: "No product is under discussion. Ask which item they want.", isError: true };
         const intent = await createIntent(ctx.userId, matchId);
-        const card = intentCard(intent);
+        const card = intentCard(intent, await getSavedCard(ctx.userId));
         ctx.cards.push(card);
         return {
           content: JSON.stringify({

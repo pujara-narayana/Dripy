@@ -1,5 +1,5 @@
 import { isForced } from "@/lib/env";
-import { fail, mockResponse, ok, readJson, RequestMeta, fallbackToMock, userIdFrom } from "@/lib/http";
+import { fail, mockResponse, ok, readJson, RequestMeta, fallbackToMock, requestUserId } from "@/lib/http";
 import { syncReceipts } from "@/lib/pipelines/receipts";
 
 export const maxDuration = 60;
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   const meta = new RequestMeta();
   try {
     const body = await readJson(req);
-    const result = await syncReceipts(userIdFrom(body.user_id), { reparse: body.reparse === true }, meta);
+    const result = await syncReceipts(requestUserId(req, body.user_id), { reparse: body.reparse === true }, meta);
     return ok(
       { added: result.added.length, receipts_parsed: result.parsed, skipped: result.skipped, items: result.added, errors: result.errors },
       meta,

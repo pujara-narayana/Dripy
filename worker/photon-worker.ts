@@ -64,9 +64,14 @@ function enqueue(key: string, job: () => Promise<void>) {
   queues.set(key, next.catch(() => undefined));
 }
 
+// The last conversation each sender used, so the backend can message them first
+// (POST /send), e.g. after they pay on the web checkout page.
+const spaces = new Map<string, Space>();
+
 async function handle(space: Space, message: Message) {
   const payload = await toPayload(message);
   if (!payload) return;
+  if (payload.sender) spaces.set(payload.sender, space);
   log("inbound", { id: payload.external_id, sender: payload.sender, hasImage: payload.attachments.length > 0 });
   await space.responding(async () => {
     let parts: Part[];
@@ -108,8 +113,32 @@ async function main() {
   // both reply to every message.
   await new Promise<void>((resolve, reject) => {
     createServer((req, res) => {
-      res.writeHead(req.url === "/health" ? 200 : 404, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: req.url === "/health" }));
+      const reply = (status: number, body: object) => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method === "POST" && req.url === "/send") {
+        // Backend -> iMessage push: { to: sender id, parts }. Only reaches people who texted
+        // this worker since it started (Photon needs an existing conversation).
+        if (!SECRET || req.headers["x-dripy-worker-secret"] !== SECRET) return reply(401, { ok: false, error: "unauthorized" });
+        let raw = "";
+        req.on("data", (chunk) => (raw += chunk));
+        req.on("end", async () => {
+          try {
+            const { to, parts } = JSON.parse(raw) as { to?: string; parts?: Part[] };
+            const space = to ? spaces.get(to) : undefined;
+            if (!space) return reply(404, { ok: false, error: "no conversation with that sender yet" });
+            await sendParts(space, parts ?? []);
+            log("pushed", { to, parts: parts?.length ?? 0 });
+            reply(200, { ok: true });
+          } catch (err) {
+            log("push_failed", { err: String(err) });
+            reply(500, { ok: false, error: String(err) });
+          }
+        });
+        return;
+      }
+      reply(req.url === "/health" ? 200 : 404, { ok: req.url === "/health" });
     })
       .once("error", (err: NodeJS.ErrnoException) =>
         reject(

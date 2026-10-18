@@ -5,6 +5,8 @@ import { env } from "@/lib/env";
 import { formatMoney, RequestMeta } from "@/lib/http";
 import { paymentAdapter, paymentLabel, type PaymentMode } from "@/lib/integrations/payments";
 import { deliverPurchaseReceipt } from "@/lib/pipelines/purchaseReceipt";
+import { createToken } from "@/lib/tokens";
+import { getSavedCard, type SavedCard } from "@/lib/users";
 import type { IntentStatus, PaymentConfirmationCard, PurchaseIntentCard } from "@/lib/types";
 
 // Purchase-intent state machine. The model can only PROPOSE (createIntent). Moving to
@@ -61,6 +63,8 @@ async function transition(
   trigger: string,
   actor: "user" | "system" | "agent",
   patch: Record<string, unknown> = {},
+  /** Extra audit detail that isn't a purchase_intents column. */
+  detail: Record<string, unknown> = {},
 ): Promise<IntentRow | null> {
   const res = await db()
     .from("purchase_intents")
@@ -70,7 +74,7 @@ async function transition(
     .select("*")
     .maybeSingle();
   const row = must(res, `transition ${from}->${to}`) as IntentRow | null;
-  if (row) await event(intent.id, from, to, trigger, actor, patch);
+  if (row) await event(intent.id, from, to, trigger, actor, { ...patch, ...detail });
   return row;
 }
 
@@ -132,7 +136,7 @@ export async function createIntent(userId: string, matchId: string): Promise<Int
   if (open) {
     if (open.match_id === match.id) return open; // idempotent "buy it" twice
     // Switching products: retire the old pending intent so "yes" can't approve the wrong item (QA #7).
-    await transition(open, "awaiting_approval", "cancelled", "superseded", "system", { superseded_by_match: match.id });
+    await transition(open, "awaiting_approval", "cancelled", "superseded", "system", {}, { superseded_by_match: match.id });
   }
 
   const inserted = must(
@@ -239,7 +243,8 @@ async function runPayment(intent: IntentRow, meta: RequestMeta): Promise<Payment
       visa_instruction_id: instructionId,
       visa_transaction_id: confirmation.transactionId || creds.transactionId,
       mode: visa.mode(),
-      confirmation_json: { credentials_status: creds.status, ...confirmation },
+      // Rails that don't report a card (simulated) show the demo card saved on the checkout page.
+      confirmation_json: { credentials_status: creds.status, card: (await getSavedCard(intent.user_id)) ?? undefined, ...confirmation },
     });
     const final = paid ?? (await getIntent(intent.id))!;
     // Only the request that won the approved->paid transition adds the item to the closet.
@@ -354,12 +359,29 @@ async function oneInOneOut(userId: string, match: MatchRow): Promise<string | nu
   return `One in, one out? You now have ${count} ${noun}, and your ${leastWorn.brand ? `${leastWorn.brand} ` : ""}${leastWorn.name} — ${worn}. Want me to find a place to donate it?`;
 }
 
-export function intentCard(i: IntentRow): PurchaseIntentCard {
+/** The web checkout page for an intent, signed so it opens from a text without logging in. */
+export function checkoutUrl(intentId: string): string {
+  return `${env.appUrl}/checkout/${intentId}?t=${createToken("checkout", intentId)}`;
+}
+
+/**
+ * `savedCard`: pass the user's card on file (or null for none) to get the card-aware prompt:
+ * no card -> "add your Visa card here: <link>"; card -> "Reply YES to pay with VISA •••• 1234".
+ * Leave it out for the plain "Reply YES" prompt.
+ */
+export function intentCard(i: IntentRow, savedCard?: SavedCard | null): PurchaseIntentCard {
   const label = paymentLabel(i.mode);
-  const prompt =
-    i.status === "awaiting_approval"
-      ? `Reply YES to pay ${formatMoney(i.amount_cents, i.currency)} at ${i.merchant_domain} (${label}), or NO to cancel.`
-      : `This purchase is ${i.status}.`;
+  const price = formatMoney(i.amount_cents, i.currency);
+  const awaiting = i.status === "awaiting_approval";
+  const needsCard = awaiting && savedCard === null;
+  const url = awaiting ? checkoutUrl(i.id) : null;
+  const prompt = !awaiting
+    ? `This purchase is ${i.status}.`
+    : needsCard
+      ? `To pay ${price} at ${i.merchant_domain} (${label}), add your Visa card here: ${url}`
+      : savedCard
+        ? `Reply YES to pay ${price} at ${i.merchant_domain} with ${savedCard.brand.toUpperCase()} •••• ${savedCard.last4} (${label}), or NO to cancel.`
+        : `Reply YES to pay ${price} at ${i.merchant_domain} (${label}), or NO to cancel.`;
   return {
     type: "purchase_intent",
     intent_id: i.id,
@@ -372,6 +394,8 @@ export function intentCard(i: IntentRow): PurchaseIntentCard {
     approval_expires_at: i.approval_expires_at,
     mode: i.mode,
     prompt,
+    checkout_url: url,
+    needs_card: needsCard,
   };
 }
 

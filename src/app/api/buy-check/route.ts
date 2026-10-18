@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/client";
-import { fail, mockResponse, ok, readJson, RequestMeta, fallbackToMock, userIdFrom } from "@/lib/http";
+import { fail, mockResponse, ok, readJson, RequestMeta, fallbackToMock, requestUserId } from "@/lib/http";
 import { buyCheck, BuyCheckError } from "@/lib/pipelines/buyCheck";
 
 export const maxDuration = 30;
@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const meta = new RequestMeta();
   try {
     const body = await readJson(req);
-    const userId = userIdFrom(body.user_id);
+    const userId = requestUserId(req, body.user_id);
     let matchId = typeof body.match_id === "string" ? body.match_id : null;
     let itemDesc = typeof body.item_desc === "string" ? body.item_desc : null;
     if (!matchId && typeof body.item_url === "string") {

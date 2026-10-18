@@ -114,6 +114,10 @@ export interface PurchaseIntentCard {
   mode: PaymentMode;
   /** Exactly what the user has to reply, e.g. "Reply YES to pay $68.00 at zara.com". */
   prompt: string;
+  /** Web checkout page for this intent (signed link; works without logging in). */
+  checkout_url?: string | null;
+  /** True when there's no card on file yet: pay on checkout_url instead of replying YES. */
+  needs_card?: boolean;
 }
 
 export interface PaymentConfirmationCard {

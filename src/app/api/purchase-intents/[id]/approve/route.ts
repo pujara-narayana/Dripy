@@ -1,5 +1,5 @@
 import { approveFromButton } from "@/lib/agent/conversation";
-import { fail, mockResponse, ok, readJson, RequestMeta, fallbackToMock, userIdFrom } from "@/lib/http";
+import { fail, mockResponse, ok, readJson, RequestMeta, fallbackToMock, requestUserId } from "@/lib/http";
 import { IntentRejected } from "@/lib/payments/intents";
 
 export const maxDuration = 30;
@@ -13,7 +13,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/purchase-intent
   const { id } = await ctx.params;
   try {
     const body = await readJson(req);
-    const result = await approveFromButton(userIdFrom(body.user_id), id, meta);
+    const result = await approveFromButton(requestUserId(req, body.user_id), id, meta);
     if (result.intent.status === "expired" || result.intent.status === "cancelled") {
       return Response.json(
         { error: `This checkout is ${result.intent.status}; nothing was charged.`, status: result.intent.status, card: result.card },

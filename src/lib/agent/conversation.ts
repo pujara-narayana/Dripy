@@ -10,6 +10,7 @@ import { classifyApproval } from "@/lib/payments/approvalRouter";
 import { approveAndPay, cancelIntent, getIntent, getOpenIntent, IntentRejected, intentCard } from "@/lib/payments/intents";
 import type { IngestedImage } from "@/lib/storage/ingestImage";
 import type { Card, Channel, PaymentConfirmationCard } from "@/lib/types";
+import { getSavedCard } from "@/lib/users";
 
 export interface TurnInput {
   userId: string;
@@ -104,6 +105,13 @@ export async function handleTurn(input: TurnInput, meta: RequestMeta): Promise<T
     const cls = classifyApproval(input.text);
     // Only approve the checkout for the product still under discussion (QA #7).
     const sameProduct = !user?.current_match_id || user.current_match_id === open.match_id;
+    if (cls === "AFFIRMATIVE" && sameProduct && !(await getSavedCard(input.userId))) {
+      // First purchase: no card on file yet, so "yes" points to the web checkout instead of paying.
+      const card = intentCard(open, null);
+      const reply = `Almost there! ${card.prompt}`;
+      const out = await saveMessage({ user_id: input.userId, channel: input.channel, direction: "outbound", body: reply, cards: [card] });
+      return { reply, cards: [card], messageId: out?.id ?? null, route: "approval", toolCalls: [] };
+    }
     if (cls === "AFFIRMATIVE" && sameProduct) {
       const result = await approveAndPay(open.id, inbound.id, "chat_affirmative", meta);
       const reply = paymentReply(result.card, result.nudge);
@@ -155,7 +163,10 @@ export async function handleTurn(input: TurnInput, meta: RequestMeta): Promise<T
   // The approval instruction must reach the user even if the model's text omits it.
   let reply = text || "Hmm, I blanked on that — mind sending it again?";
   const intent = ctx.cards.find((c) => c.type === "purchase_intent");
-  if (intent && intent.type === "purchase_intent" && !/reply yes/i.test(reply)) reply = `${reply}\n\n${intent.prompt}`;
+  if (intent && intent.type === "purchase_intent") {
+    const said = intent.needs_card && intent.checkout_url ? reply.includes(intent.checkout_url) : /reply yes/i.test(reply);
+    if (!said) reply = `${reply}\n\n${intent.prompt}`;
+  }
 
   const out = await saveMessage({ user_id: input.userId, channel: input.channel, direction: "outbound", body: reply, cards: ctx.cards });
   return { reply, cards: ctx.cards, messageId: out?.id ?? null, route: "agent", toolCalls };

@@ -1,56 +1,115 @@
-// Browser client for the Dripy API routes in src/app/api (same origin, so relative URLs).
-// The full contract lives in src/lib/types.ts and BACKEND.md; this file mirrors only what the
-// web pages read.
+// Browser client for the Dripy API routes in src/app/api (same origin, so relative URLs;
+// the session cookie rides along). Types come from the shared contract in src/lib/types.ts.
 
-export type Mode = "live" | "cached" | "simulated";
+import type {
+  Card,
+  ChatHistoryResponse,
+  ChatResponse,
+  Mode,
+  PaymentConfirmationCard,
+  Place,
+  PlacesCard,
+  PurchaseIntentCard,
+  WardrobeItem,
+  WardrobeResponse,
+} from "@/lib/types";
 
-export interface Meta {
-  mode: Mode;
-  fallback_used: boolean;
-  fallbacks?: string[];
-}
+export type { Card, Mode, Place, PurchaseIntentCard, WardrobeItem };
 
-type ItemRef = { id: string; name: string; brand?: string | null; image_url?: string | null };
-type ProductMatch = ItemRef & { url: string; merchant?: string | null; merchant_domain?: string | null; price_cents?: number | null };
-
-export type Card =
-  | { type: "outfit"; title: string; items: ItemRef[]; note?: string }
-  | { type: "reel_matches"; matches: ProductMatch[] }
-  | {
-      type: "verdict";
-      verdict: "BUY" | "SKIP" | "CONSIDER";
-      headline: string;
-      item: { name: string; price_cents?: number | null; url?: string | null; image_url?: string | null };
-      reasons: string[];
-    }
-  | { type: "purchase_intent"; item_name: string; prompt: string }
-  | { type: "payment_confirmation"; status: "paid" | "failed"; item_name: string; amount_cents: number; reference?: string | null }
-  | { type: "places"; places: { id: string; name: string; distance_km: number; hours_today: string | null; maps_url: string | null }[]; nudge?: string | null }
-  | { type: "error"; message: string };
-
-export interface ChatResponse {
-  reply: string;
-  cards: Card[];
-  message_id: string | null;
-  meta: Meta;
-}
-
-export async function sendChat(message: string, signal?: AbortSignal): Promise<ChatResponse> {
-  const res = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message }),
-    ...(signal ? { signal } : {}),
+async function call<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
+  const { json, ...rest } = init ?? {};
+  const res = await fetch(path, {
+    ...rest,
+    ...(json !== undefined ? { method: rest.method ?? "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(json) } : {}),
   });
-  const body = (await res.json().catch(() => null)) as (ChatResponse & { error?: string }) | null;
+  const body = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
   if (!res.ok || !body) throw new Error(body?.error ?? `Dripy API error ${res.status}`);
   return body;
 }
 
+// ---- account ----------------------------------------------------------------------
+
+export interface Account {
+  user: { id: string; name: string; email: string | null; phone: string | null };
+  imessage: { handle: string | null; body: string; url: string | null };
+}
+
+export const signUp = (input: { name: string; email: string; phone: string }) => call<Account & { created: boolean }>("/api/auth/signup", { json: input });
+export const logIn = (phone: string) => call<Account>("/api/auth/login", { json: { phone } });
+export const logOut = () => call<{ ok: true }>("/api/auth/logout", { method: "POST" });
+export const getAccount = () => call<Account>("/api/auth/me");
+
+// ---- chat -------------------------------------------------------------------------
+
+export const sendChat = (message: string, signal?: AbortSignal) =>
+  call<ChatResponse>("/api/chat", { json: { message }, ...(signal ? { signal } : {}) });
+
+export type HistoryMessage = ChatHistoryResponse["messages"][number];
+export const getChatHistory = () => call<ChatHistoryResponse>("/api/chat/history?limit=50").then((r) => r.messages);
+
+// ---- wardrobe, shop, checkout, donations ----------------------------------------------
+
+export const getWardrobe = () => call<WardrobeResponse>("/api/wardrobe").then((r) => r.items);
+
+export interface ShopItem {
+  id: string;
+  name: string;
+  brand: string;
+  type: string;
+  price_cents: number;
+  image_url: string;
+  url: string;
+  reason: string;
+}
+export const getShop = () => call<{ items: ShopItem[] }>("/api/shop").then((r) => r.items);
+
+export interface SavedCard {
+  brand: string;
+  last4: string;
+}
+export const buyFromShop = (productId: string) =>
+  call<{ id: string; card: PurchaseIntentCard; saved_card: SavedCard | null }>("/api/shop/buy", { json: { product_id: productId } });
+
+export interface CheckoutSummary {
+  id: string;
+  status: string;
+  item_name: string;
+  amount_cents: number;
+  currency: string;
+  merchant_domain: string;
+  merchant_url: string;
+  image_url: string | null;
+  mode: string;
+  saved_card: SavedCard | null;
+}
+export const getCheckout = (id: string, token: string | null) =>
+  call<{ checkout: CheckoutSummary }>(`/api/checkout/${id}${token ? `?t=${encodeURIComponent(token)}` : ""}`).then((r) => r.checkout);
+
+export type CardInput = { number: string; exp: string; cvc: string; name: string };
+export const payCheckout = (id: string, input: { t?: string | null; card?: CardInput }) =>
+  call<{ status: string; card: PaymentConfirmationCard | PurchaseIntentCard; reply: string; imessaged: boolean }>(`/api/checkout/${id}`, { json: input });
+
+export const donateItems = (itemIds: string[], where?: { lat: number; lng: number }) =>
+  call<{ removed: { id: string; name: string }[]; places: Place[]; reply: string; card: PlacesCard; imessaged: boolean }>("/api/wardrobe/donate", {
+    json: { item_ids: itemIds, ...where },
+  });
+
+// ---- helpers ----------------------------------------------------------------------
+
+export const money = (cents: number | null | undefined) => (cents == null ? "" : `$${(cents / 100).toFixed(2)}`);
+
+/** Same-site path for a checkout link (the API returns a full URL built from APP_URL). */
+export function checkoutPath(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
 /** A garment tile shown under a fairy message. */
 export type ChatPick = { id: string; name: string; image?: string | undefined; link?: string | undefined; store: string };
-
-const money = (cents: number | null | undefined) => (cents == null ? "" : `$${(cents / 100).toFixed(2)}`);
 
 /** Garment tiles to show for the cards in a chat reply. */
 export function picksFromCards(cards: Card[]): ChatPick[] {
@@ -68,16 +127,19 @@ export function picksFromCards(cards: Card[]): ChatPick[] {
   return picks.slice(0, 6);
 }
 
-/** Extra lines of text the cards carry (checkout prompt, receipt, places). */
+/** Extra lines of text the cards carry (receipt, places). Purchase cards get their own UI. */
 export function notesFromCards(cards: Card[]): string[] {
   const notes: string[] = [];
   for (const card of cards) {
     if (card.type === "verdict") notes.push(`${card.verdict}: ${card.headline}`);
-    else if (card.type === "purchase_intent") notes.push(card.prompt);
     else if (card.type === "payment_confirmation")
-      notes.push(card.status === "paid" ? `Paid ${money(card.amount_cents)} for ${card.item_name}${card.reference ? ` (ref ${card.reference})` : ""}` : `Payment for ${card.item_name} failed`);
+      notes.push(
+        card.status === "paid"
+          ? `Paid ${money(card.amount_cents)} at ${card.merchant_domain}${card.card ? ` with ${card.card.brand.toUpperCase()} •••• ${card.card.last4}` : ""}${card.reference ? ` (ref ${card.reference})` : ""}`
+          : `Payment for ${card.item_name} failed`,
+      );
     else if (card.type === "places") {
-      for (const p of card.places.slice(0, 3)) notes.push(`${p.name}: ${p.distance_km.toFixed(1)} km${p.hours_today ? `, ${p.hours_today}` : ""}`);
+      for (const p of card.places.slice(0, 3)) notes.push(`📍 ${p.name}: ${p.distance_km.toFixed(1)} km${p.hours_today ? `, ${p.hours_today}` : ""}`);
     } else if (card.type === "error") notes.push(card.message);
   }
   return notes;

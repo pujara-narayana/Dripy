@@ -2,6 +2,7 @@
 // for the reply, one for card details, and at most one image (QA: too many bubbles).
 // Product links are printed raw (iMessage makes them tappable), each URL at most once.
 
+import { env } from "@/lib/env";
 import { formatMoney } from "@/lib/http";
 import type { Card } from "@/lib/types";
 
@@ -72,6 +73,7 @@ export function renderForMessaging(reply: string, cards: Card[]): OutboundPart[]
   const details = rendered.map((r) => r.text).filter((t): t is string => !!t);
   if (details.length) parts.push({ kind: "text", text: details.join("\n\n") });
   const image = rendered.find((r) => r.image)?.image;
-  if (image) parts.push({ kind: "image", url: image });
+  // Catalog photos are stored as site paths ("/images/..."); the worker needs a full URL.
+  if (image) parts.push({ kind: "image", url: image.startsWith("/") ? `${env.appUrl}${image}` : image });
   return parts;
 }
