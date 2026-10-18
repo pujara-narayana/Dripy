@@ -1,110 +1,91 @@
 What's left for the hackathon
-Updated 2026-10-17, ~11:15 PM PT, at handoff from Jason to Narayana.
+Updated 2026-10-18 by Narayana (first version: 2026-10-17, ~11:15 PM PT, handoff from Jason).
 
 ────────────────────────────────────────
-WHERE THINGS STAND
+DECISIONS
 ────────────────────────────────────────
 
-Code: everything below is on the `integrations` branch (committed and pushed). Reviewed by
-Narayana on 2026-10-18: typecheck, lint and all tests pass. Product links + demo receipt
-email were added on top (see "ADDED 2026-10-18" below).
-
-Deployment plan: only the website (Next.js on Vercel) gets deployed. The Photon iMessage
-worker is NOT deployed; for a live iMessage demo run it on a laptop (`npm run worker`) with
-DRIPY_BACKEND_URL pointed at the deployed site or localhost.
-
-Integrations, all wired and tested on 2026-10-17:
-- Gemini: works. The current key in .env.local has billing on (7 parallel calls all
-  succeeded). Earlier keys were free tier (20 requests/day per model), which is what
-  caused the "Ugh, something broke on my end" iMessage replies.
-- Supabase, SerpAPI: live.
-- Stripe test mode: live. `npm run smoke:stripe` charged $1 on the Visa test card.
-  Webhook verified locally with `stripe listen` (signed event 200, forged ones 400).
-- Open-Meteo weather (new): live, no key. New `get_weather` agent tool, `weather` card,
-  GET /api/weather. The agent checks the forecast before picking an outfit.
-- Geoapify donation places (new, replaces Google Places, which needs billing): live.
-  Public Overpass timed out on every request, so this is the first working live source.
-- Gmail (new, optional): connected read-only and the search works, but the connected inbox
-  has no clothing orders (only flights, games, apps). Receipts still come from the 5 seeded
-  emails unless GMAIL_REFRESH_TOKEN is set.
-- Photon iMessage: the full path works (phone → Photon → worker → backend → reply).
-- Image downloads are now SSRF-safe (https only, public IPs only, checked at connect time
-  and on every redirect, byte cap enforced while streaming).
-- Dropped: Visa Intelligent Commerce (team chose Stripe), Google Places (paid), WhatsApp
-  (not enabled on the Photon project; Photon returns 403).
-
-Full demo runs:
-- Web chat (/api/chat): all 7 beats passed on gemini-3.5-flash, 5–11.5 s per reply:
-  outfit + weather → bomber SKIP → blazer BUY → "ok buy it" → "yes" (real Stripe test charge)
-  → donation places → blazer in wardrobe.
-- Real iMessage on gemini-3.8-flash (paid key), but with NON-demo photos (Celine leather
-  bomber, grey tuxedo): text replies 5–15 s end to end, photo replies 32–34 s. Checkout was
-  correctly refused (MensUSA not on the merchant allowlist), so nothing was charged.
-- NOT yet done: the demo photos (black bomber, camel blazer) over real iMessage.
-  Demo photos used for the web run: AirDrop any product photo of a black MA-1 bomber and a
-  camel blazer; the curated matches kick in from Gemini's live identification.
+- Deploy only the website (Next.js on Vercel). The Photon iMessage worker is NOT deployed;
+  for a live iMessage demo run `npm run worker` on a laptop, with DRIPY_BACKEND_URL pointing at
+  the deployed site or localhost.
+- Payments: Stripe test mode on the Visa test card (4242). Visa Intelligent Commerce dropped.
+- After paying, Dripy emails a demo receipt "from" the store to the connected Gmail and parses
+  it into the wardrobe (same parser as real order emails).
+- Any store is allowed (no merchant allowlist). Checkout still needs a known store domain and
+  an https product link, the user's YES, the $300 cap and the 10-minute expiry.
+- Product search: Channel3 first, SerpAPI as fallback.
+- Reply latency is not a priority.
+- Dropped: Google Places (paid; Geoapify instead), WhatsApp (not enabled on the Photon
+  project; Photon returns 403).
 
 ────────────────────────────────────────
-ADDED 2026-10-18
+WHERE THINGS STAND (all on the `integrations` branch)
 ────────────────────────────────────────
 
-- Buy links: iMessage replies now list each of the top 3 matches with its link, the verdict
-  and checkout bubbles add the store link ("Rather check out yourself? <link>"), and the
-  model sees the links so "send me the link" works. Live Google Shopping matches are resolved
-  to the store's own product page (SerpAPI immersive product, top 3 only, ~2–3 s in parallel,
-  3 extra SerpAPI searches per live photo); this also fixes the old item #4
-  (merchant_domain: null). The 2 curated demo items still link to store search pages
-  (e.g. zara.com search for "camel blazer"), not a specific product page.
-- Demo receipt email: after the Stripe test charge, Dripy emails an order confirmation styled
-  for the store the user bought from (labeled "demo receipt" in subject, banner and footer,
-  sent from the user's own Gmail to itself), reads it back, parses it with the same receipt
-  parser and saves the item to the wardrobe (source "purchase", linked receipt).
-  Falls back to an in-app receipt without Gmail send, and to a direct add if parsing fails.
-  NOT yet run live: needs `npm run gmail:auth` again (current token is read-only) and a
-  Gemini key with quota (the .env.local key hit the free-tier 20/day cap on 2026-10-17).
-- Response latency: explicitly not a priority (decision 2026-10-18).
-- iMessage test 2026-10-18 (camel blazer → buy → YES → COS receipt email) worked end to end.
-  Follow-ups done: Channel3 product search added (real product links; SerpAPI fallback), the
-  "🧾 Ref … / 📧 receipt" bubble after paying removed, and the agent now asks which product
-  when "buy it" is ambiguous (it had charged COS after recommending Zara, because its
-  comparison buy_check made COS the current product).
-  To see real product links for the demo garments set DEMO_CATALOG=false (curated matches link
-  to store search pages).
-- Later the same day: merchant allowlist removed (any store; checkout still needs a known
-  store domain + https link, the $300 cap, YES approval and the 10-minute TTL). Buy-check no
-  longer SKIPs just because you own 3+ items of that category for the occasion (white linen
-  trousers were SKIPped citing black chinos, beige shorts and jeans); SKIP now needs real
-  near-duplicates, and shorts/skirts never count as dupes of trousers/jeans. The iMessage
-  verdict line now names the item it judged.
+Working and tested live:
+- Gemini agent (gemini-3.8-flash), Supabase, Stripe test mode (+ signed webhook), Open-Meteo
+  weather (`get_weather` tool, `weather` card), Geoapify donation places, Gmail read.
+- Full iMessage path (phone → Photon → worker → backend → reply), tested 2026-10-18:
+  camel blazer photo → matches with links + BUY → "buy it" → "yes" → Stripe test charge →
+  demo receipt email in Gmail → item in the wardrobe.
+- Image downloads are SSRF-safe (https only, public IPs only, re-checked on redirects, size cap).
+
+Added 2026-10-18 (Narayana):
+- Buy links. iMessage lists the top 3 matches, each with its own product link; the verdict
+  and checkout messages add the store link ("Rather check out yourself? <link>"); a URL is
+  never repeated in one reply; the agent sees the links, so "send me the link" works.
+- Channel3 product search (CHANNEL3_API_KEY): one image search + one text search per photo;
+  every result is a real product page (via a buy.trychannel3.com tracking link) with the
+  store's domain, price and stock. SerpAPI is the fallback; on that path the top 3 Google
+  Shopping results are resolved to the store's own page.
+- Demo receipt email (src/lib/pipelines/purchaseReceipt.ts): store-styled order confirmation,
+  labeled "demo receipt" in subject, banner and footer, sent from the user's own Gmail to
+  itself (needs the gmail.send scope: `npm run gmail:auth`). Falls back to an in-app receipt
+  without Gmail, and to adding the item directly if parsing fails. The payment_confirmation
+  card has `receipt: {retailer, emailed, wardrobe_item_ids}` for the website.
+- iMessage no longer sends the "🧾 Ref … / 📧 receipt" message after paying (the reply says it).
+- Agent asks which product when "buy it" is ambiguous. Bug found in testing: it recommended
+  Zara but charged COS, because comparing COS made it the current product.
+- Merchant allowlist removed (see Decisions).
+- Buy-check fix: it no longer says SKIP just because you own 3+ items of that category for
+  the same occasion (white linen trousers were SKIPped citing black chinos, beige shorts and
+  jeans). SKIP now needs a real near-duplicate; shorts/skirts never count as duplicates of
+  trousers/jeans; pants = trousers = slacks. The iMessage verdict names the item it judged.
+
+Demo catalog: DEMO_CATALOG=true makes the black bomber / camel blazer always return the same
+curated matches (repeatable SKIP / BUY), but their links are store SEARCH pages. With
+DEMO_CATALOG=false (current .env.local) every photo uses live Channel3 results.
 
 ────────────────────────────────────────
 BEFORE ANYTHING ELSE
 ────────────────────────────────────────
 
-- Jason's .env.local temporarily points PHOTON_PROJECT_ID / PHOTON_PROJECT_SECRET at his
-  personal Photon project. Put the team project's values back.
 - The Gmail OAuth client secret was shared in a chat channel. Rotate it after the hackathon.
-- `npm run seed` was run several times tonight; Alex's chat history is clean.
+- Gmail refresh tokens in testing mode expire after 7 days: re-run `npm run gmail:auth` if
+  receipts stop arriving (fallbacks will show `gmail_send`).
+- The Gemini key in .env.local is free tier (20 requests/day per model, about 2–3 demo runs).
+  Use a key with billing for the demo.
+- Every test purchase adds an item to Alex's closet. Run `npm run seed` before the demo
+  (wipes the shared chat history; warn the team).
 
 ────────────────────────────────────────
 WHAT'S LEFT, IN PRIORITY ORDER
 ────────────────────────────────────────
 
-1. Re-run `npm run gmail:auth` (stop npm run dev first) and approve both permissions, so the
-   token has gmail.send. Then one live purchase: "buy it" → "yes" → receipt email in the
-   inbox → item in GET /api/wardrobe. Re-seed after (it adds the blazer to Alex's closet).
-   Then merge `integrations` into main.
+1. Live re-test over iMessage after today's fixes: a non-demo item (e.g. linen trousers)
+   should get CONSIDER/BUY, not SKIP; "buy it" at any store should reach "Reply YES"; after
+   YES only the "Done ✅ Paid …" reply should arrive.
 
-2. Run the demo photos over real iMessage once. Send each photo BEFORE its question:
-   iMessage delivers a photo and its caption as two separate messages.
+2. Push `integrations` and merge it into main (not pushed yet).
 
-3. (Not a priority, 2026-10-18.) Photo reply speed (~30 s). SerpAPI Google Lens hit its 15 s timeout on every live photo,
-   then the Shopping fallback worked. In src/lib/integrations/serpapi.ts `lensMatches`:
-   shorten the timeout or run Lens and Shopping in parallel. Expect ~15 s photo replies.
-   Our own code (database + tools) is only ~1–2 s per reply; the rest is Gemini round
-   trips (each tool use = one more call, 1–3 s each when healthy).
+3. Deploy the website to Vercel: copy every .env.local variable (incl. CHANNEL3_API_KEY,
+   GEOAPIFY_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REFRESH_TOKEN), create a
+   Stripe webhook for the deployed URL and put its whsec_ in STRIPE_WEBHOOK_SECRET, and add
+   the deployed /api/gmail/callback to the Google OAuth client if you ever re-auth there.
 
-4. DONE 2026-10-18: live matches resolve to the store's product page and domain.
+4. Frontend (teammate): chat screen rendering cards[] first, then the wardrobe grid. Show
+   ProductMatch.url as a "Buy" link and payment_confirmation.receipt ("receipt emailed").
+   Build against mocks/ and BACKEND.md.
 
 5. Gemini resilience: each call can wait 45 s and retry 3×, so an overloaded model hangs
    replies. Shorter timeout + fallback model (gemini-3.5-flash / 3.6-flash were healthy
@@ -115,21 +96,16 @@ WHAT'S LEFT, IN PRIORITY ORDER
      open-now sorting pushed Goodwill out of the top 5). Exclude "UW Surplus" (furniture).
    - The model's checkout text said "via Visa" without "test mode" (the card is labeled).
    - The outfit reply said ~50°F while the weather card said 57/42.
-   - The YES step takes ~5.4 s with no LLM (database + Stripe calls); worth a look.
 
-7. Deploy to Vercel: copy every .env.local variable (new ones: GEOAPIFY_API_KEY,
-   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REFRESH_TOKEN), create a new Stripe webhook
-   secret for the deployed URL in the dashboard, point the worker's DRIPY_BACKEND_URL at it.
+7. Gmail inbox: the connected inbox has no clothing orders besides Dripy's demo receipts.
+   Before relying on a real sync, test the parser on a non-clothing receipt to make sure it
+   adds nothing.
 
-8. Frontend: still the create-next-app placeholder. Chat screen first (renders cards[]),
-   then wardrobe grid. Build against mocks/ and BACKEND.md.
+8. Not a priority: reply speed (photo replies ~15–30 s; YES step ~5 s for Stripe plus the
+   receipt email and parse).
 
-9. Gmail decision: connect an inbox that has clothing orders, email the 5 sample receipts
-   into the connected one, or stay on the seeded inbox. Before any real sync, test the
-   parser on a non-clothing receipt to make sure it adds nothing.
-
-10. Stretch, if time allows: photo-upload tagging, Style DNA, closet cleanout,
-    price-drop alerts. (Weather-aware outfits are done.)
+9. Stretch, if time allows: photo-upload tagging, Style DNA, closet cleanout,
+   price-drop alerts. (Weather-aware outfits are done.)
 
 ────────────────────────────────────────
 WHAT IT WOULD TAKE FOR REAL USERS
@@ -139,7 +115,7 @@ The core architecture holds up: the agent, the tools, the safe payment flow, the
 bridge and the fallbacks. The gaps:
 
 Area: Buying the item ⚠️ biggest gap
-What's demo-only today: Stripe charges your card, but nothing actually orders the jacket from Zara
+What's demo-only today: Stripe charges a test card and Dripy emails a demo receipt "from" the store, but nothing actually orders the item from the store
 What real use needs: A way to actually complete the order: (a) send the user to the store to check out (simplest, and earns affiliate fees), (b) the newer agent-checkout
 standards (Visa Intelligent Commerce, Stripe/OpenAI's Agentic Commerce Protocol, Shopify), which need each merchant to support them, or (c) Dripy buys on the user's
 behalf, which means fulfillment, returns and money-transmission law
@@ -162,9 +138,9 @@ what you actually wear
 Effort: 1–2 weeks, plus Google's review
 ────────────────────────────────────────
 Area: Product results
-What's demo-only today: SerpAPI (scrapes Google, about $0.025 per search) plus curated demo matches; Lens times out often; live matches lack a store domain
-What real use needs: Licensed product feeds (ShopStyle, Rakuten, Impact), live stock and sizes, cost limits per user
-Effort: 1 week
+What's demo-only today: Channel3 (product catalog API, 1,000 free calls/month, real product pages with affiliate links) with SerpAPI as fallback, plus 2 curated demo matches when DEMO_CATALOG=true
+What real use needs: A paid Channel3 plan or licensed feeds (ShopStyle, Rakuten, Impact), live sizes, cost limits per user, a policy for which stores count as trustworthy (there is no store allowlist anymore)
+Effort: Days
 ────────────────────────────────────────
 Area: iMessage
 What's demo-only today: Free plan, shared number; every user must be pre-registered; WhatsApp not enabled
