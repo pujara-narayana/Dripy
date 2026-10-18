@@ -1,0 +1,99 @@
+From: Zara <noreply@zara.com>
+To: Alex Rivera <alex.rivera@example.com>
+Subject: Your order has been confirmed
+Date: Wed, 10 Jun 2026 14:32:11 -0700
+Message-ID: <56782190341.20260610@mail.zara.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your order has been confirmed</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Helvetica,Arial,sans-serif;color:#000;">
+  <div style="max-width:640px;margin:0 auto;background:#ffffff;">
+    <div class="promo-banner" style="background:#000000;color:#ffffff;text-align:center;padding:10px 16px;font-size:12px;letter-spacing:1px;">
+      NEW COLLECTION &mdash; Discover the Summer Linen edit. Free shipping on orders over $50.
+    </div>
+    <div style="text-align:center;padding:28px 16px 8px;font-size:32px;font-weight:bold;letter-spacing:4px;color:#000000;">ZARA</div>
+
+    <div style="padding:16px 24px;">
+      <h1 style="font-size:20px;font-weight:normal;margin:0 0 12px;">Your order has been confirmed</h1>
+      <p style="font-size:14px;line-height:20px;margin:0 0 8px;">Hi Alex,</p>
+      <p style="font-size:14px;line-height:20px;margin:0 0 16px;">We've received your order and are getting it ready. We'll email you again as soon as it ships.</p>
+      <table role="presentation" style="font-size:13px;margin-bottom:16px;">
+        <tr><td style="padding:2px 12px 2px 0;color:#666;">Order number</td><td style="padding:2px 0;font-weight:bold;">56782190341</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#666;">Order date</td><td style="padding:2px 0;">June 10, 2026</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#666;">Payment</td><td style="padding:2px 0;">Visa ending in 4242</td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#666;vertical-align:top;">Ship to</td><td style="padding:2px 0;">Alex Rivera<br>4525 Brooklyn Ave NE, Apt 3<br>Seattle, WA 98105</td></tr>
+      </table>
+
+      <table class="order-items" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="text-align:left;color:#666;font-size:11px;text-transform:uppercase;">
+            <th style="padding:8px;border-bottom:2px solid #000;"></th>
+            <th style="padding:8px;border-bottom:2px solid #000;">Item</th>
+            <th style="padding:8px;border-bottom:2px solid #000;">Color</th>
+            <th style="padding:8px;border-bottom:2px solid #000;">Size</th>
+            <th style="padding:8px;border-bottom:2px solid #000;text-align:center;">Qty</th>
+            <th style="padding:8px;border-bottom:2px solid #000;text-align:right;">Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:12px 8px;border-bottom:1px solid #e5e5e5;">
+              <img src="https://placehold.co/600x800/e8e4dc/ffffff/png?text=White%20Linen%20Shirt" width="60" height="80" alt="" style="display:block;">
+            </td>
+            <td style="padding:12px 8px;border-bottom:1px solid #e5e5e5;">
+              <div class="item-name" style="font-weight:bold;">White Linen Shirt</div>
+            </td>
+            <td style="padding:12px 8px;border-bottom:1px solid #e5e5e5;">white</td>
+            <td style="padding:12px 8px;border-bottom:1px solid #e5e5e5;">M</td>
+            <td style="padding:12px 8px;border-bottom:1px solid #e5e5e5;text-align:center;">1</td>
+            <td style="padding:12px 8px;border-bottom:1px solid #e5e5e5;text-align:right;">$39.90</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="order-totals" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;margin-top:12px;">
+        <tr><td style="padding:4px 8px;text-align:right;color:#666;">Subtotal</td><td width="100" style="padding:4px 8px;text-align:right;">$39.90</td></tr>
+        <tr><td style="padding:4px 8px;text-align:right;color:#666;">Shipping</td><td style="padding:4px 8px;text-align:right;">FREE</td></tr>
+        <tr><td style="padding:4px 8px;text-align:right;color:#666;">Tax</td><td style="padding:4px 8px;text-align:right;">$0.00</td></tr>
+        <tr><td style="padding:8px;text-align:right;font-weight:bold;border-top:1px solid #000;">Order total</td><td style="padding:8px;text-align:right;font-weight:bold;border-top:1px solid #000;">$39.90</td></tr>
+      </table>
+    </div>
+
+    <div class="recommendations" style="padding:16px 24px;border-top:8px solid #f5f5f5;">
+      <h2 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">You may also like</h2>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="50%" style="padding:8px;vertical-align:top;">
+            <a href="https://www.zara.com/us/" style="color:#000;text-decoration:none;">
+              <img src="https://placehold.co/240x320/cccccc/ffffff/png?text=Textured%20Knit%20Polo%20Shirt" width="240" alt="" style="display:block;">
+              <div style="margin-top:6px;font-size:13px;">Textured Knit Polo Shirt</div>
+              <div style="font-size:13px;color:#666;">$35.90</div>
+            </a>
+          </td>
+          <td width="50%" style="padding:8px;vertical-align:top;">
+            <a href="https://www.zara.com/us/" style="color:#000;text-decoration:none;">
+              <img src="https://placehold.co/240x320/cccccc/ffffff/png?text=Straight%20Fit%20Jeans" width="240" alt="" style="display:block;">
+              <div style="margin-top:6px;font-size:13px;">Straight Fit Jeans</div>
+              <div style="font-size:13px;color:#666;">$45.90</div>
+            </a>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="footer" style="padding:20px 24px;background:#f5f5f5;font-size:11px;color:#666;line-height:16px;text-align:center;">
+      <p style="margin:0 0 8px;">Questions about your order? Visit our <a href="https://www.zara.com/us/help" style="color:#666;">Help Center</a>.</p>
+      <p style="margin:0 0 8px;">You are receiving this email because you placed an order with ZARA. <a href="https://www.zara.com/us/en/newsletter-unsubscribe?u=a8f31c2e" style="color:#666;">Unsubscribe</a> from marketing emails.</p>
+      <p style="margin:0;">Inditex USA LLC, 500 Fifth Avenue, New York, NY 10110, USA</p>
+    </div>
+  </div>
+</body>
+</html>
