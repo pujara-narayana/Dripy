@@ -1,0 +1,119 @@
+{
+  "analysis_id": "00000000-0000-0000-0004-000000000002",
+  "identified": [
+    {
+      "label": "camel unstructured blazer",
+      "category": "outerwear",
+      "subcategory": "blazer",
+      "color": "camel",
+      "occasion_tags": [
+        "smart-casual"
+      ]
+    }
+  ],
+  "matches": [
+    {
+      "id": "00000000-0000-0000-0003-000000000004",
+      "name": "Unstructured Wool-Blend Blazer",
+      "brand": "Zara",
+      "category": "outerwear",
+      "color": "camel",
+      "price_cents": 7990,
+      "currency": "USD",
+      "merchant": "Zara",
+      "merchant_domain": "zara.com",
+      "url": "https://www.zara.com/us/en/search?searchTerm=camel%20blazer",
+      "image_url": "https://placehold.co/600x800/b08a5b/ffffff/png?text=Zara%20Camel%20Blazer"
+    },
+    {
+      "id": "00000000-0000-0000-0003-000000000005",
+      "name": "Relaxed Camel Blazer",
+      "brand": "COS",
+      "category": "outerwear",
+      "color": "camel",
+      "price_cents": 17500,
+      "currency": "USD",
+      "merchant": "COS",
+      "merchant_domain": "cos.com",
+      "url": "https://www.cos.com/en-us/search?q=camel+blazer",
+      "image_url": "https://placehold.co/600x800/a67c52/ffffff/png?text=COS%20Blazer"
+    },
+    {
+      "id": "00000000-0000-0000-0003-000000000006",
+      "name": "Slim Blazer in Camel",
+      "brand": "ASOS DESIGN",
+      "category": "outerwear",
+      "color": "camel",
+      "price_cents": 6500,
+      "currency": "USD",
+      "merchant": "ASOS",
+      "merchant_domain": "asos.com",
+      "url": "https://www.asos.com/us/search/?q=camel+blazer",
+      "image_url": "https://placehold.co/600x800/c19a6b/ffffff/png?text=ASOS%20Camel%20Blazer"
+    }
+  ],
+  "card": {
+    "type": "reel_matches",
+    "analysis_id": "00000000-0000-0000-0004-000000000002",
+    "source_image_url": "https://placehold.co/600x800/b08a5b/ffffff/png?text=Reel%3A%20camel%20blazer",
+    "identified": [
+      {
+        "label": "camel unstructured blazer",
+        "category": "outerwear",
+        "subcategory": "blazer",
+        "color": "camel",
+        "occasion_tags": [
+          "smart-casual"
+        ]
+      }
+    ],
+    "matches": [
+      {
+        "id": "00000000-0000-0000-0003-000000000004",
+        "name": "Unstructured Wool-Blend Blazer",
+        "brand": "Zara",
+        "category": "outerwear",
+        "color": "camel",
+        "price_cents": 7990,
+        "currency": "USD",
+        "merchant": "Zara",
+        "merchant_domain": "zara.com",
+        "url": "https://www.zara.com/us/en/search?searchTerm=camel%20blazer",
+        "image_url": "https://placehold.co/600x800/b08a5b/ffffff/png?text=Zara%20Camel%20Blazer"
+      },
+      {
+        "id": "00000000-0000-0000-0003-000000000005",
+        "name": "Relaxed Camel Blazer",
+        "brand": "COS",
+        "category": "outerwear",
+        "color": "camel",
+        "price_cents": 17500,
+        "currency": "USD",
+        "merchant": "COS",
+        "merchant_domain": "cos.com",
+        "url": "https://www.cos.com/en-us/search?q=camel+blazer",
+        "image_url": "https://placehold.co/600x800/a67c52/ffffff/png?text=COS%20Blazer"
+      },
+      {
+        "id": "00000000-0000-0000-0003-000000000006",
+        "name": "Slim Blazer in Camel",
+        "brand": "ASOS DESIGN",
+        "category": "outerwear",
+        "color": "camel",
+        "price_cents": 6500,
+        "currency": "USD",
+        "merchant": "ASOS",
+        "merchant_domain": "asos.com",
+        "url": "https://www.asos.com/us/search/?q=camel+blazer",
+        "image_url": "https://placehold.co/600x800/c19a6b/ffffff/png?text=ASOS%20Camel%20Blazer"
+      }
+    ]
+  },
+  "meta": {
+    "mode": "simulated",
+    "fallback_used": true,
+    "fallbacks": [
+      "mock"
+    ]
+  }
+}

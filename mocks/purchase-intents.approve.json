@@ -1,0 +1,22 @@
+{
+  "status": "paid",
+  "card": {
+    "type": "payment_confirmation",
+    "intent_id": "00000000-0000-0000-0006-000000000001",
+    "status": "paid",
+    "item_name": "Unstructured Wool-Blend Blazer",
+    "amount_cents": 7990,
+    "currency": "USD",
+    "merchant_domain": "zara.com",
+    "visa_instruction_id": "sim_instr_7f3c2a9e",
+    "visa_transaction_id": "sim_txn_41b8d0c2",
+    "mode": "simulated"
+  },
+  "meta": {
+    "mode": "simulated",
+    "fallback_used": true,
+    "fallbacks": [
+      "mock"
+    ]
+  }
+}

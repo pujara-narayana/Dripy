@@ -1,0 +1,117 @@
+{
+  "places": [
+    {
+      "id": "00000000-0000-0000-0005-000000000001",
+      "name": "Buffalo Exchange",
+      "address": "4530 University Way NE, Seattle, WA 98105",
+      "kind": "consignment",
+      "distance_km": 1,
+      "open_now": true,
+      "hours_today": "10:00–20:00",
+      "maps_url": "https://www.google.com/maps/search/?api=1&query=Buffalo%20Exchange%204530%20University%20Way%20NE%20Seattle"
+    },
+    {
+      "id": "00000000-0000-0000-0005-000000000002",
+      "name": "Crossroads Trading",
+      "address": "325 Broadway E, Seattle, WA 98102",
+      "kind": "consignment",
+      "distance_km": 4,
+      "open_now": true,
+      "hours_today": "11:00–19:00",
+      "maps_url": "https://www.google.com/maps/search/?api=1&query=Crossroads%20Trading%20325%20Broadway%20E%20Seattle"
+    },
+    {
+      "id": "00000000-0000-0000-0005-000000000003",
+      "name": "Value Village (Savers) Capitol Hill",
+      "address": "1525 11th Ave, Seattle, WA 98122",
+      "kind": "thrift",
+      "distance_km": 4.6,
+      "open_now": true,
+      "hours_today": "09:00–21:00",
+      "maps_url": "https://www.google.com/maps/search/?api=1&query=Value%20Village%201525%2011th%20Ave%20Seattle"
+    },
+    {
+      "id": "00000000-0000-0000-0005-000000000004",
+      "name": "Goodwill Seattle Store & Donation Center",
+      "address": "1400 S Lane St, Seattle, WA 98144",
+      "kind": "donation_dropoff",
+      "distance_km": 6.6,
+      "open_now": true,
+      "hours_today": "09:00–21:00",
+      "maps_url": "https://www.google.com/maps/search/?api=1&query=Goodwill%201400%20S%20Lane%20St%20Seattle"
+    },
+    {
+      "id": "00000000-0000-0000-0005-000000000005",
+      "name": "The Salvation Army Thrift Store",
+      "address": "1010 4th Ave S, Seattle, WA 98134",
+      "kind": "thrift",
+      "distance_km": 7.2,
+      "open_now": true,
+      "hours_today": "10:00–19:00",
+      "maps_url": "https://www.google.com/maps/search/?api=1&query=Salvation%20Army%20Thrift%20Store%201010%204th%20Ave%20S%20Seattle"
+    }
+  ],
+  "card": {
+    "type": "places",
+    "places": [
+      {
+        "id": "00000000-0000-0000-0005-000000000001",
+        "name": "Buffalo Exchange",
+        "address": "4530 University Way NE, Seattle, WA 98105",
+        "kind": "consignment",
+        "distance_km": 1,
+        "open_now": true,
+        "hours_today": "10:00–20:00",
+        "maps_url": "https://www.google.com/maps/search/?api=1&query=Buffalo%20Exchange%204530%20University%20Way%20NE%20Seattle"
+      },
+      {
+        "id": "00000000-0000-0000-0005-000000000002",
+        "name": "Crossroads Trading",
+        "address": "325 Broadway E, Seattle, WA 98102",
+        "kind": "consignment",
+        "distance_km": 4,
+        "open_now": true,
+        "hours_today": "11:00–19:00",
+        "maps_url": "https://www.google.com/maps/search/?api=1&query=Crossroads%20Trading%20325%20Broadway%20E%20Seattle"
+      },
+      {
+        "id": "00000000-0000-0000-0005-000000000003",
+        "name": "Value Village (Savers) Capitol Hill",
+        "address": "1525 11th Ave, Seattle, WA 98122",
+        "kind": "thrift",
+        "distance_km": 4.6,
+        "open_now": true,
+        "hours_today": "09:00–21:00",
+        "maps_url": "https://www.google.com/maps/search/?api=1&query=Value%20Village%201525%2011th%20Ave%20Seattle"
+      },
+      {
+        "id": "00000000-0000-0000-0005-000000000004",
+        "name": "Goodwill Seattle Store & Donation Center",
+        "address": "1400 S Lane St, Seattle, WA 98144",
+        "kind": "donation_dropoff",
+        "distance_km": 6.6,
+        "open_now": true,
+        "hours_today": "09:00–21:00",
+        "maps_url": "https://www.google.com/maps/search/?api=1&query=Goodwill%201400%20S%20Lane%20St%20Seattle"
+      },
+      {
+        "id": "00000000-0000-0000-0005-000000000005",
+        "name": "The Salvation Army Thrift Store",
+        "address": "1010 4th Ave S, Seattle, WA 98134",
+        "kind": "thrift",
+        "distance_km": 7.2,
+        "open_now": true,
+        "hours_today": "10:00–19:00",
+        "maps_url": "https://www.google.com/maps/search/?api=1&query=Salvation%20Army%20Thrift%20Store%201010%204th%20Ave%20S%20Seattle"
+      }
+    ],
+    "nudge": null
+  },
+  "meta": {
+    "mode": "simulated",
+    "fallback_used": true,
+    "fallbacks": [
+      "mock"
+    ]
+  }
+}

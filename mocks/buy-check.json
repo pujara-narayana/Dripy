@@ -1,0 +1,52 @@
+{
+  "card": {
+    "type": "verdict",
+    "verdict": "BUY",
+    "headline": "Buy it — it fills a real gap",
+    "item": {
+      "name": "Unstructured Wool-Blend Blazer",
+      "price_cents": 7990,
+      "url": "https://www.zara.com/us/en/search?searchTerm=camel%20blazer",
+      "image_url": "https://placehold.co/600x800/b08a5b/ffffff/png?text=Zara%20Camel%20Blazer"
+    },
+    "match_id": "00000000-0000-0000-0003-000000000004",
+    "reasons": [
+      "You own 3 jackets (Black Bomber Jacket, Black Faux-Leather Biker Jacket, Light-Wash Denim Jacket), but none of them work for smart-casual.",
+      "A camel blazer fills your smart-casual gap and is nothing like the casual outerwear you already have.",
+      "At $79.90 it's 16% below the $95.00 market median for camel blazers."
+    ],
+    "dupes": [
+      {
+        "item_id": "00000000-0000-0000-0001-000000000001",
+        "name": "Black Bomber Jacket",
+        "image_url": "https://placehold.co/600x800/111111/ffffff/png?text=Black%20Bomber%20Jacket",
+        "similarity": 0.28
+      },
+      {
+        "item_id": "00000000-0000-0000-0001-000000000002",
+        "name": "Black Faux-Leather Biker Jacket",
+        "image_url": "https://placehold.co/600x800/0d0d0d/ffffff/png?text=Black%20Biker%20Jacket",
+        "similarity": 0.24
+      },
+      {
+        "item_id": "00000000-0000-0000-0001-000000000003",
+        "name": "Light-Wash Denim Jacket",
+        "image_url": "https://placehold.co/600x800/7ea1c4/ffffff/png?text=Denim%20Jacket",
+        "similarity": 0.21
+      }
+    ],
+    "gap_filled": "smart-casual",
+    "price": {
+      "candidate_cents": 7990,
+      "market_median_cents": 9500,
+      "good_price": true
+    }
+  },
+  "meta": {
+    "mode": "simulated",
+    "fallback_used": true,
+    "fallbacks": [
+      "mock"
+    ]
+  }
+}

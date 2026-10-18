@@ -1,0 +1,24 @@
+{
+  "id": "00000000-0000-0000-0006-000000000001",
+  "status": "awaiting_approval",
+  "card": {
+    "type": "purchase_intent",
+    "intent_id": "00000000-0000-0000-0006-000000000001",
+    "item_name": "Unstructured Wool-Blend Blazer",
+    "amount_cents": 7990,
+    "currency": "USD",
+    "merchant_domain": "zara.com",
+    "merchant_url": "https://www.zara.com/us/en/search?searchTerm=camel%20blazer",
+    "status": "awaiting_approval",
+    "approval_expires_at": "2026-10-17T17:52:00.000Z",
+    "mode": "simulated",
+    "prompt": "Reply YES to pay $79.90 at zara.com (Visa, simulated sandbox)"
+  },
+  "meta": {
+    "mode": "simulated",
+    "fallback_used": true,
+    "fallbacks": [
+      "mock"
+    ]
+  }
+}

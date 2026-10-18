@@ -1,0 +1,205 @@
+{
+  "added": 10,
+  "receipts_parsed": 5,
+  "items": [
+    {
+      "id": "00000000-0000-0000-0001-000000000014",
+      "name": "White Linen Shirt",
+      "brand": "Zara",
+      "category": "top",
+      "subcategory": "shirt",
+      "color": "white",
+      "size": "M",
+      "price_cents": 3990,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "smart-casual",
+        "casual"
+      ],
+      "image_url": "https://placehold.co/600x800/e8e4dc/ffffff/png?text=White%20Linen%20Shirt",
+      "times_worn": 9,
+      "last_worn_at": "2026-10-03T19:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000001",
+      "name": "Black Bomber Jacket",
+      "brand": "Zara",
+      "category": "outerwear",
+      "subcategory": "bomber",
+      "color": "black",
+      "size": "M",
+      "price_cents": 6990,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "casual"
+      ],
+      "image_url": "https://placehold.co/600x800/111111/ffffff/png?text=Black%20Bomber%20Jacket",
+      "times_worn": 14,
+      "last_worn_at": "2026-10-15T17:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000010",
+      "name": "Beige Chino Shorts",
+      "brand": "Zara",
+      "category": "bottom",
+      "subcategory": "shorts",
+      "color": "beige",
+      "size": "32",
+      "price_cents": 3590,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "casual"
+      ],
+      "image_url": "https://placehold.co/600x800/d8c8a8/ffffff/png?text=Beige%20Chino%20Shorts",
+      "times_worn": 6,
+      "last_worn_at": "2026-09-01T18:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000004",
+      "name": "Grey Relaxed Hoodie",
+      "brand": "H&M",
+      "category": "top",
+      "subcategory": "hoodie",
+      "color": "grey",
+      "size": "M",
+      "price_cents": 2499,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "casual",
+        "athletic"
+      ],
+      "image_url": "https://placehold.co/600x800/8a8a8a/ffffff/png?text=Grey%20Hoodie",
+      "times_worn": 21,
+      "last_worn_at": "2026-10-16T08:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000007",
+      "name": "Blue Oxford Shirt",
+      "brand": "H&M",
+      "category": "top",
+      "subcategory": "shirt",
+      "color": "blue",
+      "size": "M",
+      "price_cents": 2999,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "smart-casual"
+      ],
+      "image_url": "https://placehold.co/600x800/6f8fb8/ffffff/png?text=Blue%20Oxford%20Shirt",
+      "times_worn": 4,
+      "last_worn_at": "2026-10-10T18:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000006",
+      "name": "Black Crew Tee",
+      "brand": "ASOS DESIGN",
+      "category": "top",
+      "subcategory": "tee",
+      "color": "black",
+      "size": "M",
+      "price_cents": 1500,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "casual"
+      ],
+      "image_url": "https://placehold.co/600x800/1c1c1c/ffffff/png?text=Black%20Tee",
+      "times_worn": 11,
+      "last_worn_at": "2026-10-14T08:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000009",
+      "name": "Black Slim Chinos",
+      "brand": "ASOS DESIGN",
+      "category": "bottom",
+      "subcategory": "chinos",
+      "color": "black",
+      "size": "32",
+      "price_cents": 4000,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "smart-casual"
+      ],
+      "image_url": "https://placehold.co/600x800/222222/ffffff/png?text=Black%20Chinos",
+      "times_worn": 5,
+      "last_worn_at": "2026-10-10T18:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000012",
+      "name": "Brown Suede Chelsea Boots",
+      "brand": "ASOS DESIGN",
+      "category": "shoes",
+      "subcategory": "boots",
+      "color": "brown",
+      "size": "10",
+      "price_cents": 7000,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "smart-casual"
+      ],
+      "image_url": "https://placehold.co/600x800/6b4423/ffffff/png?text=Chelsea%20Boots",
+      "times_worn": 7,
+      "last_worn_at": "2026-10-10T18:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000013",
+      "name": "Grey Rib Beanie",
+      "brand": "H&M",
+      "category": "accessory",
+      "subcategory": "beanie",
+      "color": "grey",
+      "size": "One Size",
+      "price_cents": 999,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "casual"
+      ],
+      "image_url": "https://placehold.co/600x800/7a7a7a/ffffff/png?text=Grey%20Beanie",
+      "times_worn": 3,
+      "last_worn_at": "2026-10-12T08:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    },
+    {
+      "id": "00000000-0000-0000-0001-000000000015",
+      "name": "Striped Crew Socks 3-Pack",
+      "brand": "H&M",
+      "category": "accessory",
+      "subcategory": "socks",
+      "color": "white",
+      "size": "One Size",
+      "price_cents": 1299,
+      "currency": "USD",
+      "source": "receipt",
+      "occasion_tags": [
+        "casual"
+      ],
+      "image_url": "https://placehold.co/600x800/dddddd/ffffff/png?text=Socks%203-Pack",
+      "times_worn": 8,
+      "last_worn_at": "2026-10-16T08:00:00Z",
+      "created_at": "2026-10-17T16:30:00.000Z"
+    }
+  ],
+  "meta": {
+    "mode": "simulated",
+    "fallback_used": true,
+    "fallbacks": [
+      "mock"
+    ]
+  }
+}

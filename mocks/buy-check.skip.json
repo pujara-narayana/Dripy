@@ -1,0 +1,46 @@
+{
+  "card": {
+    "type": "verdict",
+    "verdict": "SKIP",
+    "headline": "Skip it — you already have two",
+    "item": {
+      "name": "Oversized Nylon Bomber Jacket",
+      "price_cents": 5800,
+      "url": "https://www.asos.com/us/search/?q=black+nylon+bomber+jacket",
+      "image_url": "https://placehold.co/600x800/151515/ffffff/png?text=ASOS%20Nylon%20Bomber"
+    },
+    "match_id": "00000000-0000-0000-0003-000000000001",
+    "reasons": [
+      "You already own two black jackets: Black Bomber Jacket and Black Faux-Leather Biker Jacket.",
+      "Your Black Bomber Jacket is nearly identical — same color, same cut — and you've worn it 14 times.",
+      "$58.00 is under the $65.00 median, but a good price doesn't make it a new look."
+    ],
+    "dupes": [
+      {
+        "item_id": "00000000-0000-0000-0001-000000000001",
+        "name": "Black Bomber Jacket",
+        "image_url": "https://placehold.co/600x800/111111/ffffff/png?text=Black%20Bomber%20Jacket",
+        "similarity": 1
+      },
+      {
+        "item_id": "00000000-0000-0000-0001-000000000002",
+        "name": "Black Faux-Leather Biker Jacket",
+        "image_url": "https://placehold.co/600x800/0d0d0d/ffffff/png?text=Black%20Biker%20Jacket",
+        "similarity": 0.75
+      }
+    ],
+    "gap_filled": null,
+    "price": {
+      "candidate_cents": 5800,
+      "market_median_cents": 6500,
+      "good_price": true
+    }
+  },
+  "meta": {
+    "mode": "simulated",
+    "fallback_used": true,
+    "fallbacks": [
+      "mock"
+    ]
+  }
+}
