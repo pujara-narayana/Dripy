@@ -11,7 +11,8 @@ Next.js 16 route handlers + Supabase + Gemini (`gemini-3.8-flash`, set `GEMINI_M
    labeled mocks/simulations; nothing hard-fails.
 2. Supabase → SQL editor → paste and run `supabase/migrations/0001_init.sql`
    (creates tables, the atomic `approve_intent` function and public storage buckets),
-   then `supabase/migrations/0002_stripe.sql`.
+   then `0002_stripe.sql`, `0003_demo_card.sql` (card on file) and `0004_profile.sql`
+   (`users.gender`, `users.spend_limit_cents`). README section 1b has the steps for a new project.
 3. `npm run seed` — demo user Alex, 15-item wardrobe, 5 receipts, 2 curated demo
    analyses, 5 Seattle donation places. Re-run before every rehearsal (it resets chat).
 4. `npm run dev`, then check `GET /api/health` to see which integrations are live.
@@ -52,7 +53,9 @@ the stored product match, never from the model. Payment runs only when the user'
 message says yes (deterministic classifier) or they tap Approve. Postgres enforces it:
 `check (status <> 'paid' or approved_by_message_id is not null)`, approval is a
 compare-and-set (a racing button + "yes" can't double-charge), there's a one-open-checkout
-index, a $300 cap, a known store domain with an https product link (any store; no allowlist since 2026-10-18), a 10-minute TTL and an append-only
+index, a per-purchase spending limit (the user's own from `/settings`, never above the $300
+`PURCHASE_CAP_CENTS` cap; checked in `createIntent`, so it covers iMessage, web chat and the
+shop), a known store domain with an https product link (any store; no allowlist since 2026-10-18), a 10-minute TTL and an append-only
 `purchase_intent_events` audit trail.
 
 **Payment rails** (`PAYMENT_PROVIDER`, all behind `src/lib/integrations/payments.ts`):
@@ -101,11 +104,13 @@ Checked-in examples of every response: `mocks/*.json`. `user_id` defaults to the
 | POST | `/api/receipts/sync` | `{user_id, reparse?: true}` | `{added, receipts_parsed, items[]}` |
 | GET | `/api/weather` | `?lat=&lng=&date=` (YYYY-MM-DD, `today`, `tomorrow` or a weekday; next 7 days) | `{card: WeatherCard}`; 400 outside the week, 503 if Open-Meteo is down |
 | GET | `/api/health` | — | which integrations are live |
-| POST | `/api/auth/signup` | `{name, email, phone}` | `{user, imessage: {handle, body, url}, created}` + session cookie; creates the starter closet |
+| POST | `/api/auth/signup` | `{name, email, phone, gender: "women"\|"men"}` | `{user, imessage: {handle, body, url}, created}` + session cookie; creates that gender's starter closet; 422 without a gender |
+| GET | `/api/account/settings` | — (session only, 401 otherwise) | `{gender, spend_limit_cents (null = the cap), max_spend_limit_cents}` |
+| POST | `/api/account/settings` | `{gender?, spend_limit_cents?: integer cents 100…cap \| null}` | the saved settings; 422 for anything else |
 | POST | `/api/auth/login` | `{phone}` | `{user, imessage}` + session cookie (demo: no password) |
 | POST | `/api/auth/logout` · GET `/api/auth/me` | — | clear the cookie · current user or 401 |
 | GET | `/auth/link` | `?t=` (login token) | the wardrobe link in the iMessage greeting: signs the browser in, redirects to `/` |
-| GET | `/api/shop` | — | `{items[]}` catalog pieces the user doesn't own, shuffled |
+| GET | `/api/shop` | — | `{items[]}` catalog pieces for the user's gender (+ unisex) they don't own, shuffled |
 | POST | `/api/shop/buy` | `{product_id}` | `{id, status, card, saved_card}`; `card.needs_card` → send them to `card.checkout_url` |
 | GET | `/api/checkout/:id` | `?t=` (or session) | `{checkout}` summary for the card page |
 | POST | `/api/checkout/:id` | `{t?, card?: {number, exp, cvc, name}}` | validates a Visa card (keeps brand + last 4), then pays via the approve path |
@@ -113,9 +118,21 @@ Checked-in examples of every response: `mocks/*.json`. `user_id` defaults to the
 
 **Web accounts (demo).** The session is a signed cookie (`SESSION_SECRET`), no password. Every
 route above uses the signed-in user when there is one, else `user_id` / the demo user, so curl
-and the contract tests still work. A new account gets the starter closet from
-`src/data/catalog.ts` (`source: "seed"`). Run `supabase/migrations/0003_demo_card.sql` for the
-card on file (applied to the shared database on 2026-10-18).
+and the contract tests still work. A new account gets the starter closet for its gender from
+`src/data/catalog.ts` (`source: "seed"`; women 22 pieces, men 14, unisex pieces in both).
+Run `supabase/migrations/0003_demo_card.sql` for the card on file (applied to the shared
+database on 2026-10-18).
+
+**Gender and spending limit (migration `0004_profile.sql`; not yet applied to the team's shared
+database as of 2026-10-18, run it there before using this on the shared project).** `users.gender` (`women` | `men`,
+picked as Girl / Boy at sign-up) chooses the starter closet, the `/api/shop` pieces and the
+dashboard's sample stats. `users.spend_limit_cents` is the most the agent may spend on one
+purchase (`null` = `PURCHASE_CAP_CENTS`); `createIntent` refuses anything pricier with an
+`IntentRejected` the agent relays ("…over the $100.00 I'm allowed to spend for you per
+purchase… change that limit in Settings"). Without the migration, `getProfile` falls back to
+women + the cap, sign-up retries without the column, and saving settings fails. The seeded
+demo user Alex has no gender set, so Alex gets the women's shop. The agent's product search
+doesn't use the saved gender yet (it only filters when the user says men's / women's).
 
 **First purchase vs. later ones.** With no card on file, a purchase prompt is
 "add your Visa card here: <signed checkout link>" and a chat "yes" re-sends that link instead of

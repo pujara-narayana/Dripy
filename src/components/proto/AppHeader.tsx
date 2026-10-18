@@ -11,6 +11,7 @@ const navLinks = [
   { href: "/recommended", label: "Recommended" },
   { href: "/donate", label: "Donate" },
   { href: "/dashboard", label: "Dashboard", className: "hidden md:inline" },
+  { href: "/settings", label: "Settings" },
   { href: "/about", label: "About", className: "hidden lg:inline" },
 ];
 

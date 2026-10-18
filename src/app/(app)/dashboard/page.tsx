@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
+import { Suspense } from "react";
 import { ArrowUpRight, Footprints, Heart, Shirt, Sparkles, TrendingUp } from "lucide-react";
-import { catalog as photoClothes } from "@/data/catalog";
+import { catalogById, catalogFor, type Gender } from "@/data/catalog";
+import { SESSION_COOKIE, verifyToken } from "@/lib/tokens";
+import { getProfile } from "@/lib/users";
 
 export const metadata: Metadata = {
   title: "Wardrobe stats",
@@ -9,39 +13,79 @@ export const metadata: Metadata = {
 };
 
 
-const byId = (id: string) => photoClothes.find((g) => g.id === id)!;
+const byId = (id: string) => catalogById(id)!;
 
-// Mock wear data — frontend-only prototype numbers.
-const mostWorn = [
-  { id: "jeans", wears: 34 },
-  { id: "shirt", wears: 29 },
-  { id: "sneakers-knit", wears: 27 },
-  { id: "knit", wears: 22 },
-  { id: "jacket", wears: 18 },
-];
+// Mock wear data — frontend-only prototype numbers, one set per closet (girl / boy).
+const mock: Record<Gender, { mostWorn: { id: string; wears: number }[]; sleeping: { id: string; months: number }[]; note: string }> = {
+  women: {
+    mostWorn: [
+      { id: "jeans", wears: 34 },
+      { id: "shirt", wears: 29 },
+      { id: "sneakers-knit", wears: 27 },
+      { id: "knit", wears: 22 },
+      { id: "jacket", wears: 18 },
+    ],
+    sleeping: [
+      { id: "dress-flannel", months: 7 },
+      { id: "blazer", months: 5 },
+      { id: "flats-tstrap", months: 4 },
+    ],
+    note: "tops and shoes carry most of your outfits — a second pair of dressy flats would earn its keep.",
+  },
+  men: {
+    mostWorn: [
+      { id: "m-jeans", wears: 34 },
+      { id: "m-tee", wears: 29 },
+      { id: "m-sneakers", wears: 27 },
+      { id: "m-merino", wears: 22 },
+      { id: "m-fleece", wears: 18 },
+    ],
+    sleeping: [
+      { id: "m-sweatshirt", months: 7 },
+      { id: "coach-jacket", months: 5 },
+      { id: "m-belt", months: 4 },
+    ],
+    note: "tops and sneakers carry most of your outfits — a pair of dressier shoes would earn its keep.",
+  },
+};
 
-const sleeping = [
-  { id: "dress-flannel", months: 7 },
-  { id: "blazer", months: 5 },
-  { id: "flats-tstrap", months: 4 },
-];
-
-const categories = ["Outerwear", "Tops", "Dresses", "Bottoms", "Shoes", "Accessories"].map((type) => ({
-  type,
-  count: photoClothes.filter((g) => g.type === type).length,
-}));
-const maxCategory = Math.max(...categories.map((c) => c.count));
-const totalItems = photoClothes.length;
-const maxWears = mostWorn[0]!.wears;
-
-const stats = [
-  { icon: Shirt, label: "Pieces in closet", value: String(totalItems), note: "across 6 categories" },
-  { icon: TrendingUp, label: "Outfits this month", value: "21", note: "+4 vs last month" },
-  { icon: Footprints, label: "Cost per wear", value: "$3.20", note: "best: straight jeans" },
-  { icon: Sparkles, label: "Closet in rotation", value: "78%", note: "of pieces worn in 90 days" },
-];
+/** The signed-in user's closet type (proxy.ts keeps signed-out visitors off this page). */
+async function closetGender(): Promise<Gender> {
+  const userId = verifyToken("session", (await cookies()).get(SESSION_COOKIE)?.value);
+  if (!userId) return "women";
+  try {
+    return (await getProfile(userId)).gender;
+  } catch {
+    return "women"; // no database: show the original demo numbers
+  }
+}
 
 export default function Dashboard() {
+  return (
+    <Suspense fallback={<main className="min-h-0 flex-1" />}>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+async function DashboardContent() {
+  const gender = await closetGender();
+  const { mostWorn, sleeping, note } = mock[gender];
+  const photoClothes = catalogFor(gender);
+  const categories = ["Outerwear", "Tops", "Dresses", "Bottoms", "Shoes", "Accessories"]
+    .map((type) => ({ type, count: photoClothes.filter((g) => g.type === type).length }))
+    .filter((c) => c.count > 0);
+  const maxCategory = Math.max(...categories.map((c) => c.count));
+  const totalItems = photoClothes.length;
+  const maxWears = mostWorn[0]!.wears;
+
+  const stats = [
+    { icon: Shirt, label: "Pieces in closet", value: String(totalItems), note: `across ${categories.length} categories` },
+    { icon: TrendingUp, label: "Outfits this month", value: "21", note: "+4 vs last month" },
+    { icon: Footprints, label: "Cost per wear", value: "$3.20", note: "best: straight jeans" },
+    { icon: Sparkles, label: "Closet in rotation", value: "78%", note: "of pieces worn in 90 days" },
+  ];
+
   return (
     <main className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-8">
@@ -109,7 +153,7 @@ export default function Dashboard() {
               ))}
             </div>
             <p className="mt-5 rounded-xl bg-accent px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-              Your fairy&apos;s note: tops and shoes carry most of your outfits — a second pair of dressy flats would earn its keep.
+              Your fairy&apos;s note: {note}
             </p>
           </section>
 

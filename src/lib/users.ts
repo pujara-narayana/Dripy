@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac } from "node:crypto";
-import { starterCloset, BRAND } from "@/data/catalog";
+import { starterClosetFor, BRAND, type Gender } from "@/data/catalog";
 import { db, must } from "@/lib/db/client";
 import { env } from "@/lib/env";
 
@@ -34,32 +34,38 @@ async function findByPhone(phone: string): Promise<AccountRow | null> {
   return must(await db().from("users").select("id,name,email,phone").eq("phone", phone).maybeSingle(), "find user by phone") as AccountRow | null;
 }
 
+export const isGender = (value: unknown): value is Gender => value === "women" || value === "men";
+
+// Migration 0004 (gender, spend_limit_cents) not applied yet: PostgREST/Postgres "no such column".
+const missingProfileColumns = (err: { code?: string } | null) => err?.code === "PGRST204" || err?.code === "42703";
+
 /** Create the account (or return the existing one for this phone) and give it a starter closet. */
-export async function signUp(input: { name: string; email: string; phone: string }): Promise<{ user: AccountRow; created: boolean }> {
+export async function signUp(input: { name: string; email: string; phone: string; gender: Gender }): Promise<{ user: AccountRow; created: boolean }> {
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
   const phone = normalizePhone(input.phone);
   if (!name) throw new SignupRejected("Tell us your name.");
   if (!EMAIL_RE.test(email)) throw new SignupRejected("That email doesn't look right.");
   if (!phone) throw new SignupRejected("Enter a phone number with area code, e.g. (206) 555-0123.");
+  if (!isGender(input.gender)) throw new SignupRejected("Pick girl or boy so Dripy can set up the right closet.");
 
   const existing = await findByPhone(phone);
   if (existing) return { user: existing, created: false };
 
-  const user = must(
-    await db()
-      .from("users")
-      .insert({ name, email, phone, home_lat: env.demoLat, home_lng: env.demoLng })
-      .select("id,name,email,phone")
-      .single(),
-    "create user",
-  ) as AccountRow;
-  // "Parsed from your Gmail": every new account starts with the demo closet (see src/data/catalog.ts).
+  const row = { name, email, phone, home_lat: env.demoLat, home_lng: env.demoLng };
+  let res = await db().from("users").insert({ ...row, gender: input.gender }).select("id,name,email,phone").single();
+  if (missingProfileColumns(res.error)) {
+    console.warn("users.gender missing (run supabase/migrations/0004_profile.sql); signing up without it");
+    res = await db().from("users").insert(row).select("id,name,email,phone").single();
+  }
+  const user = must(res, "create user") as AccountRow;
+  // "Parsed from your Gmail": every new account starts with the demo closet for their
+  // gender (see src/data/catalog.ts).
   must(
     await db()
       .from("wardrobe_items")
       .insert(
-        starterCloset.map((item, i) => ({
+        starterClosetFor(input.gender).map((item, i) => ({
           user_id: user.id,
           name: item.name,
           brand: BRAND,
@@ -114,6 +120,39 @@ export async function saveCard(userId: string, card: SavedCard) {
     await db().from("users").update({ card_brand: card.brand, card_last4: card.last4 }).eq("id", userId),
     "save card (run supabase/migrations/0003_demo_card.sql if this fails)",
   );
+}
+
+// ---- profile: gender and agent spending limit (migration 0004) -----------------------------
+
+export interface Profile {
+  gender: Gender;
+  /** The most the agent may spend on one purchase; null = the server cap. */
+  spendLimitCents: number | null;
+}
+
+export async function getProfile(userId: string): Promise<Profile> {
+  const res = await db().from("users").select("gender,spend_limit_cents").eq("id", userId).maybeSingle();
+  if (res.error) {
+    // Migration 0004 not applied yet: women's closet, server cap.
+    console.warn("profile lookup failed (run supabase/migrations/0004_profile.sql)", res.error.message);
+    return { gender: "women", spendLimitCents: null };
+  }
+  const row = res.data as { gender: string | null; spend_limit_cents: number | null } | null;
+  return { gender: isGender(row?.gender) ? row.gender : "women", spendLimitCents: row?.spend_limit_cents ?? null };
+}
+
+export async function updateProfile(userId: string, patch: { gender?: Gender; spendLimitCents?: number | null }) {
+  const update: Record<string, unknown> = {};
+  if (patch.gender !== undefined) update.gender = patch.gender;
+  if (patch.spendLimitCents !== undefined) update.spend_limit_cents = patch.spendLimitCents;
+  if (!Object.keys(update).length) return;
+  must(await db().from("users").update(update).eq("id", userId), "update profile (run supabase/migrations/0004_profile.sql if this fails)");
+}
+
+/** The per-purchase limit the agent enforces: the user's own, never above the server cap. */
+export async function spendLimitCents(userId: string): Promise<number> {
+  const { spendLimitCents: own } = await getProfile(userId);
+  return own ? Math.min(own, env.purchaseCapCents) : env.purchaseCapCents;
 }
 
 // ---- iMessage start code -------------------------------------------------------------------

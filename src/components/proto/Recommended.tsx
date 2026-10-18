@@ -79,7 +79,8 @@ export function Recommended() {
 
         <div className="mb-6 mt-8 flex flex-col justify-between gap-4 border-y border-border py-4 lg:flex-row lg:items-center">
           <div aria-label="Clothing categories" className="flex flex-wrap gap-2">
-            {categories.map((name) => (
+            {/* Only categories the shop has pieces in (no "Dresses" in the men's shop). */}
+            {categories.filter((name) => name === "All pieces" || !items || items.some((piece) => piece.type === name)).map((name) => (
               <Button key={name} size="sm" variant={category === name ? "secondary" : "ghost"} aria-pressed={category === name} onClick={() => setCategory(name)} className="rounded-full">{name}</Button>
             ))}
           </div>

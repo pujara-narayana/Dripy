@@ -6,7 +6,7 @@ import { formatMoney, RequestMeta } from "@/lib/http";
 import { paymentAdapter, paymentLabel, type PaymentMode } from "@/lib/integrations/payments";
 import { deliverPurchaseReceipt } from "@/lib/pipelines/purchaseReceipt";
 import { createToken } from "@/lib/tokens";
-import { getSavedCard, type SavedCard } from "@/lib/users";
+import { getSavedCard, spendLimitCents, type SavedCard } from "@/lib/users";
 import type { IntentStatus, PaymentConfirmationCard, PurchaseIntentCard } from "@/lib/types";
 
 // Purchase-intent state machine. The model can only PROPOSE (createIntent). Moving to
@@ -128,8 +128,11 @@ export async function createIntent(userId: string, matchId: string): Promise<Int
       "I couldn't tell which store sells that one, so I won't set up a payment. Try another match, or use its link to buy it yourself.",
     );
   }
-  if (match.price_cents > env.purchaseCapCents) {
-    throw new IntentRejected(`That's over your ${formatMoney(env.purchaseCapCents)} per-purchase limit, so I won't queue it.`);
+  const limit = await spendLimitCents(userId);
+  if (match.price_cents > limit) {
+    throw new IntentRejected(
+      `That's ${formatMoney(match.price_cents, match.currency)}, over the ${formatMoney(limit)} I'm allowed to spend for you per purchase, so I won't queue it. You can change that limit in Settings on the website.`,
+    );
   }
 
   const open = await getOpenIntent(userId);

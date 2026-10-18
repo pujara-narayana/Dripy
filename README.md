@@ -51,9 +51,11 @@ Open **http://localhost:3000/api/health**. With the team env file you should see
 
 The UI is served by the same Next.js app: with `npm run dev` running, open
 **http://localhost:3000**. Signed-out visitors land on `/welcome` (sign up / log in); the app
-pages (`/`, `/recommended`, `/donate`, `/dashboard`) need a session (`src/proxy.ts`).
+pages (`/`, `/recommended`, `/donate`, `/dashboard`, `/settings`) need a session (`src/proxy.ts`).
 
-Demo flow: sign up with name, Gmail and phone → the page opens iMessage with the start code
+Demo flow: sign up with name, Gmail, phone and **Girl / Boy** → set the fairy's budget (the
+most it may spend on one purchase: $50 / $100 / $150 / $300 or a custom amount; Skip keeps the
+$300 cap) → the page opens iMessage with the start code
 (the "Open iMessage" button stays as a fallback) → Dripy greets you with a wardrobe link → buy
 something (iMessage or the Recommended page): the first time you enter a Visa test card on
 `/checkout/:id`, after that it's one tap → the store's order receipt is emailed to the Gmail you
@@ -61,8 +63,18 @@ signed up with and the item lands in your closet with its photo → donate piece
 and get the nearest drop-off in chat. iMessage and the web chat are one conversation, so the
 web agent knows what you sent on iMessage ("buy the other one from the photo I texted you").
 
-Extra setup for this: run `supabase/migrations/0003_demo_card.sql` (already applied to the
-shared database; only needed on a new one), and set
+**Girl / Boy and the spending limit.** The sign-up choice picks the starter closet, the
+Recommended shop and the Dashboard's sample stats: girl gets the women's Uniqlo pieces, boy
+gets men's (no dresses, skirts or flats); a few unisex pieces (scarves, beanies, bags, canvas
+sneakers) show up for both. All of it lives in `src/data/catalog.ts`. The spending limit applies
+to every purchase (iMessage, web chat, Recommended): anything over it is refused before a
+checkout is created, with "You can change that limit in Settings". `/settings` (in the header)
+changes the limit and Girl / Boy; switching changes the shop and dashboard, not the closet.
+`PURCHASE_CAP_CENTS` (default $300) stays the upper bound.
+
+Extra setup for this: run `supabase/migrations/0003_demo_card.sql` and `0004_profile.sql`
+(only needed on a database that doesn't have them yet; see section 1b; the team's shared
+database has `0003` but **not `0004`** yet), and set
 `DRIPY_IMESSAGE_HANDLE` (the Dripy line), `APP_URL` and `SESSION_SECRET` in `.env.local` (see
 `.env.example`; keep the template itself blank).
 The web chat takes photos too: the ＋ button, paste (⌘V a screenshot) or drag and drop, up to 3
@@ -89,10 +101,12 @@ checkout form does nothing).
 End-to-end test, in demo order (`DEMO_CATALOG=true` for the curated bomber/blazer; `false`
 for live products):
 
-1. On the iPhone, open `APP_URL/signup` and enter name, Gmail and phone. Messages opens with
-   "Hi Dripy! My code is XXXXXX"; send it from your **phone number** (see section 4).
+1. On the iPhone, open `APP_URL/signup` and enter name, Gmail, phone and Girl / Boy, then pick
+   a budget. Messages opens with "Hi Dripy! My code is XXXXXX"; send it from your **phone
+   number** (see section 4).
 2. Dripy replies with the greeting and a wardrobe link; the link signs you in to your closet.
-3. The Recommended page shows shop pieces you don't own.
+3. The Recommended page shows shop pieces you don't own, for the gender you picked. With a $100
+   limit, the $149.90 Balmacaan coat (boy) is refused and points you to Settings.
 4. Text a photo: 3 matches with links (15–30 s), no verdict. Then "should I buy this?": the verdict.
    Or text "find me a white trench coat for men under $300" (no photo needed).
 5. "buy the first one" → "add your Visa card here: <link>" → enter `4242 4242 4242 4242`, any
@@ -105,9 +119,26 @@ for live products):
 10. Buy on Recommended (one tap with the saved card), then in the web chat: "buy the other one
    from the photo I texted you" → Approve & pay.
 
-Start over with `delete from users where phone = '+1XXXXXXXXXX';` in the Supabase SQL Editor.
+Sign up with a number that isn't in the database yet: an existing number signs you in to that
+account and skips the new closet. Start over with `delete from users where phone = '+1XXXXXXXXXX';` in the Supabase SQL Editor.
 It removes that account's closet, chat, purchases and saved card (cascade). Never run it for
 the demo user.
+
+### 1b. Your own Supabase project (instead of the team's)
+
+1. In the new project: **Project Settings → Data API** for the Project URL (`SUPABASE_URL`),
+   **Project Settings → API Keys** for the `sb_secret_…` secret key (`SUPABASE_SERVICE_ROLE_KEY`).
+2. Create the tables: **SQL Editor → New query**, paste and run each file in
+   `supabase/migrations/` in order (`0001` → `0004`). Or put the database connection string in
+   `.env.local` as `DATABASE_URL` and run them with any Postgres client.
+   Use the **Session pooler** string (**Connect** → Connection String → URI →
+   `postgres.<ref>@aws-0-<region>.pooler.supabase.com:5432`): the "Direct connection"
+   (`db.<ref>.supabase.co`) is IPv6-only and fails on most home networks with
+   `getaddrinfo ENOENT`. The app itself never uses `DATABASE_URL`.
+3. `npm run seed`, then restart `npm run dev`.
+
+Switching projects signs everyone out of the website (the session cookie is signed with
+`SESSION_SECRET`, or the Supabase key when that's empty): just sign up again.
 
 ## 2. Try the agent from the terminal
 
@@ -229,7 +260,7 @@ purchase receipt stays in the app (it's still parsed into the wardrobe).
 
 ```
 src/app/(app)/        Signed-in pages; src/app/(public)/ welcome, sign-up, log-in, checkout, about
-src/data/catalog.ts   Clothing catalog: starter closet + shop (shared by pages and backend)
+src/data/catalog.ts   Clothing catalog: women's / men's / unisex starter closets + shops (shared by pages and backend)
 src/components/       UI: proto/ (Dripy screens and pieces), ui/ (shadcn primitives)
 src/client/           Browser-side helpers: API client (dripy-api.ts), cn()
 public/images/        Garment photos and fairy mascots
@@ -253,7 +284,10 @@ components with `npx shadcn add <name>`. Please don't edit `src/lib` or
 | Problem | Fix |
 |---|---|
 | Every response has `"mode":"simulated"` and `fallbacks: ["mock", "db_unconfigured"]` | `.env.local` is missing or not in the project root. Restart `npm run dev` after adding it. |
-| `Could not find the table … in the schema cache` | Database not set up. In Supabase → SQL Editor run `supabase/migrations/0001_init.sql`, then `0002_stripe.sql`, then `npm run seed`. |
+| `Could not find the table … in the schema cache` | Database not set up. In Supabase → SQL Editor run `supabase/migrations/0001_init.sql` through `0004_profile.sql` in order, then `npm run seed` (section 1b). |
+| Everyone gets the girl's closet; saving Settings fails with "update profile (run supabase/migrations/0004_profile.sql …)" | Run `0004_profile.sql`. Until then sign-up still works (without gender) and the limit is the $300 cap. |
+| "over the $X I'm allowed to spend for you per purchase" | The user's spending limit. Raise it in `/settings` (max `PURCHASE_CAP_CENTS`, default $300). |
+| A dev-server page keeps reloading while a test browser (Playwright MCP) is open | The tool writes its console log into `.playwright-mcp/` in the project, which `next dev` watches, so every reload logs, which triggers another rebuild. Close the test browser; normal browsers aren't affected. `.playwright-mcp/` is safe to delete. |
 | `Port 3000 is in use` / `Another Dripy worker is already running` | An old copy is still running. Ctrl+C it, or `kill $(lsof -t -iTCP:3000 -sTCP:LISTEN)` (8787 for the worker). |
 | iMessage replies "Ugh, something broke on my end" | The backend caught an error; read the `npm run dev` terminal. On 2026-10-17 it was always Gemini **429 quota**: a free-tier key allows 20 requests/day per model, about one demo run. Use a key whose Google Cloud project has billing on. |
 | Photo replies take 15–30 s | Expected for now (several Gemini calls plus product search); speed isn't a priority. Slowest when Channel3 is missing or failing and it falls back to SerpAPI (Lens often times out at 15 s). |

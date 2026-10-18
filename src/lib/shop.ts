@@ -1,9 +1,10 @@
 import "server-only";
-import { BRAND, catalogById, MERCHANT_DOMAIN, shopItems, type CatalogItem } from "@/data/catalog";
+import { BRAND, catalogById, MERCHANT_DOMAIN, shopItemsFor, type CatalogItem } from "@/data/catalog";
 import { db, must } from "@/lib/db/client";
 import { listWardrobe } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { createIntent, IntentRejected, type IntentRow } from "@/lib/payments/intents";
+import { getProfile } from "@/lib/users";
 
 // The website's shop: catalog pieces the user doesn't own yet. Buying one goes through the
 // same purchase-intent state machine as an iMessage purchase, so the agent sees it too.
@@ -30,10 +31,11 @@ const toShopItem = (item: CatalogItem): ShopItem => ({
   reason: item.reason,
 });
 
-/** Shop pieces the user doesn't own, in a fresh random order on every call. */
+/** Shop pieces for the user's gender they don't own, in a fresh random order on every call. */
 export async function listShop(userId: string): Promise<ShopItem[]> {
-  const owned = new Set((await listWardrobe(userId)).map((w) => w.name.toLowerCase()));
-  const items = shopItems.filter((item) => !owned.has(item.name.toLowerCase())).map(toShopItem);
+  const [wardrobe, { gender }] = await Promise.all([listWardrobe(userId), getProfile(userId)]);
+  const owned = new Set(wardrobe.map((w) => w.name.toLowerCase()));
+  const items = shopItemsFor(gender).filter((item) => !owned.has(item.name.toLowerCase())).map(toShopItem);
   for (let i = items.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [items[i], items[j]] = [items[j], items[i]];

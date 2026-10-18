@@ -34,10 +34,21 @@ export interface Account {
   imessage: { handle: string | null; body: string; url: string | null };
 }
 
-export const signUp = (input: { name: string; email: string; phone: string }) => call<Account & { created: boolean }>("/api/auth/signup", { json: input });
+export type Gender = "women" | "men";
+
+export const signUp = (input: { name: string; email: string; phone: string; gender: Gender }) => call<Account & { created: boolean }>("/api/auth/signup", { json: input });
 export const logIn = (phone: string) => call<Account>("/api/auth/login", { json: { phone } });
 export const logOut = () => call<{ ok: true }>("/api/auth/logout", { method: "POST" });
 export const getAccount = () => call<Account>("/api/auth/me");
+
+export interface Settings {
+  gender: Gender;
+  /** Most the agent may spend on one purchase; null = the server cap. */
+  spend_limit_cents: number | null;
+  max_spend_limit_cents: number;
+}
+export const getSettings = () => call<Settings>("/api/account/settings");
+export const saveSettings = (patch: { gender?: Gender; spend_limit_cents?: number | null }) => call<Settings>("/api/account/settings", { json: patch });
 
 // ---- chat -------------------------------------------------------------------------
 
