@@ -60,8 +60,8 @@ signed up with and the item lands in your closet with its photo → donate piece
 and get the nearest drop-off in chat. iMessage and the web chat are one conversation, so the
 web agent knows what you sent on iMessage ("buy the other one from the photo I texted you").
 
-Extra setup for this: run `supabase/migrations/0003_demo_card.sql` (**not applied to the shared
-database yet** as of 2026-10-18; saving a card fails without it), and set
+Extra setup for this: run `supabase/migrations/0003_demo_card.sql` (already applied to the
+shared database; only needed on a new one), and set
 `DRIPY_IMESSAGE_HANDLE` (the Dripy line), `APP_URL` and `SESSION_SECRET` in `.env.local` (see
 `.env.example`; keep the template itself blank).
 If the chat API fails (no LLM key, Gemini quota used up) the web chat falls back to canned

@@ -93,8 +93,8 @@ Send from the phone number (README section 4).
 BEFORE ANYTHING ELSE
 ────────────────────────────────────────
 
-- Run supabase/migrations/0003_demo_card.sql on the shared Supabase. Not applied as of
-  2026-10-18 (users.card_brand doesn't exist), so saving a Visa card on /checkout fails.
+- Done 2026-10-18: supabase/migrations/0003_demo_card.sql (card on file) is applied to the
+  shared Supabase.
 
 - The Gmail OAuth client secret was shared in a chat channel. Rotate it after the hackathon.
 - Gmail refresh tokens in testing mode expire after 7 days: re-run `npm run gmail:auth` if

@@ -104,8 +104,7 @@ Checked-in examples of every response: `mocks/*.json`. `user_id` defaults to the
 route above uses the signed-in user when there is one, else `user_id` / the demo user, so curl
 and the contract tests still work. A new account gets the starter closet from
 `src/data/catalog.ts` (`source: "seed"`). Run `supabase/migrations/0003_demo_card.sql` for the
-card on file (not applied to the shared database yet as of 2026-10-18; saving a card fails
-until it is).
+card on file (applied to the shared database on 2026-10-18).
 
 **First purchase vs. later ones.** With no card on file, a purchase prompt is
 "add your Visa card here: <signed checkout link>" and a chat "yes" re-sends that link instead of
