@@ -39,6 +39,14 @@ console.log("linen trousers:", scoreCandidate(linen("white"), wardrobe).reasons.
 // A real near-duplicate still skips: black chinos when you own black chinos (and pricier).
 assert.equal(scoreCandidate({ ...linen("black"), name: "Black Chinos", subcategory: "chinos", price_cents: 25000 }, wardrobe).verdict, "SKIP");
 
+// Same color, different kind of top isn't a dupe (iMessage test 2026-10-18): a white hoodie
+// was SKIPped citing a white linen shirt and a white tee.
+const hoodie = { name: "Regular Fit Hoodie", category: "top", subcategory: "hoodie", color: "white", occasion_tags: ["casual"], price_cents: 2900, market_median_cents: 14150 };
+const owned = (name: string, subcategory: string): WardrobeItem => ({ ...wardrobe[0]!, id: name, name, category: "top", subcategory, color: "white", occasion_tags: ["casual"] });
+const h = scoreCandidate(hoodie, [...wardrobe, owned("White Linen Shirt", "shirt"), owned("White Essential Tee", "t-shirt")]);
+assert.notEqual(h.verdict, "SKIP", h.headline);
+assert.equal(h.dupes.length, 0, "shirts/tees aren't dupes of a hoodie");
+
 // Cited names in reasons[0] are exactly the dupes.
 for (const d of skip.dupes) assert.ok(skip.reasons[0].includes(d.name), `reason cites ${d.name}`);
 console.log("\nall buy-check assertions passed");

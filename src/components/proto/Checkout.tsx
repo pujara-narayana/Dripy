@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthCard, Field, FormError } from "@/components/proto/AuthCard";
 import { CardPreview, VisaMark } from "@/components/proto/VisaCard";
+import { Linkify } from "@/components/proto/Linkify";
 import { getCheckout, money, payCheckout, type CardInput, type CheckoutSummary } from "@/client/dripy-api";
 
 const formatNumber = (v: string) => v.replace(/\D/g, "").slice(0, 16).replace(/(.{4})(?=.)/g, "$1 ");
@@ -78,7 +79,7 @@ export function Checkout() {
         <CheckCircle2 className="size-10 text-secondary" />
         <h1 className="mt-3 font-display text-4xl">Paid with <VisaMark className="text-[#1a1f71]" /></h1>
         <div className="mt-5">{summary}</div>
-        <p className="mt-5 whitespace-pre-line text-sm leading-relaxed">{paid.reply}</p>
+        <Linkify text={paid.reply} className="mt-5 block whitespace-pre-line text-sm leading-relaxed" />
         {paid.imessaged && <p className="mt-3 text-xs text-muted-foreground">Dripy sent this to your iMessage chat too.</p>}
         <Button asChild className="mt-6 w-full rounded-full bg-dot text-dot-foreground hover:bg-dot/90"><Link href="/">See it in my closet</Link></Button>
       </AuthCard>

@@ -6,8 +6,9 @@ import { createIntent, intentCard, IntentRejected } from "@/lib/payments/intents
 import { buyCheck, BuyCheckError } from "@/lib/pipelines/buyCheck";
 import { getForecast } from "@/lib/integrations/weather";
 import { findDonationPlaces } from "@/lib/pipelines/donations";
-import { analyzeImage, analyzeReelUrl, type Analysis, ReelUnsupportedError } from "@/lib/pipelines/imageAnalysis";
-import type { IngestedImage } from "@/lib/storage/ingestImage";
+import { addPhotoToWardrobe, lastSentPhotoUrl } from "@/lib/pipelines/closetPhoto";
+import { analyzeImage, analyzeReelUrl, type Analysis, ReelUnsupportedError, searchProducts } from "@/lib/pipelines/imageAnalysis";
+import { fetchImage, type IngestedImage } from "@/lib/storage/ingestImage";
 import type { Card, Channel } from "@/lib/types";
 import { getSavedCard } from "@/lib/users";
 
@@ -17,6 +18,8 @@ export interface ToolContext {
   meta: RequestMeta;
   /** Images attached to the current user message, already normalized + uploaded. */
   images: IngestedImage[];
+  /** The user's message text this turn (hints which garment a closet photo means). */
+  userText?: string;
   lat?: number | null;
   lng?: number | null;
   cards: Card[];
@@ -63,7 +66,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "analyze_image",
     description:
-      "Identify the clothing in a photo or screenshot the user sent in this message and find similar products to buy, with prices and stores. Use this whenever the user sends an image.",
+      "Identify the clothing in a photo or screenshot the user sent in this message and find similar products to buy, with prices and stores. Use this when the user sends an image of something they want or are curious about. NOT for things they already own (use add_to_wardrobe).",
     input_schema: {
       type: "object",
       properties: {
@@ -72,6 +75,37 @@ export const TOOLS: ToolDef[] = [
           description: "Which attached image (0 = first). Defaults to 0.",
           minimum: 0,
         },
+      },
+    },
+  },
+  {
+    name: "search_products",
+    description:
+      "Find products to buy from a text description alone (no image needed), e.g. 'a white trench coat for men under $300'. Returns real store listings with prices and links, shown as a product card; each has a match_id for buy_check and create_purchase_intent.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "shopping query, e.g. \"men's white trench coat\"; include gender, color, material and style the user gave" },
+        category: { type: "string", enum: ["outerwear", "top", "bottom", "dress", "shoes", "accessory"] },
+        subcategory: { type: "string", description: "e.g. trench coat, jeans, sneakers" },
+        color: { type: "string", description: "one basic color word, if the user gave one" },
+        occasion: { type: "string", enum: ["casual", "smart-casual", "formal", "athletic", "going-out", "outdoor"] },
+        max_price_usd: { type: "number", description: "budget ceiling, if the user gave one" },
+        min_price_usd: { type: "number" },
+        gender: { type: "string", enum: ["male", "female"], description: "only if the user said men's/women's" },
+      },
+      required: ["query", "category"],
+    },
+  },
+  {
+    name: "add_to_wardrobe",
+    description:
+      "Add clothes the user ALREADY OWNS to their wardrobe from a photo (\"I have this\", \"add this to my closet\"). Uses the image in this message, or the last photo they sent if this message has none. Does not search for products.",
+    input_schema: {
+      type: "object",
+      properties: {
+        image_index: { type: "integer", minimum: 0, description: "Which attached image (0 = first). Defaults to 0." },
+        which: { type: "string", description: "which garment(s) they mean, in their words, e.g. 'the denim jacket' or 'all of them'" },
       },
     },
   },
@@ -88,7 +122,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: "buy_check",
     description:
-      "Wardrobe-aware verdict (BUY / SKIP / CONSIDER) for a product the user is considering, citing similar items they already own. Pass match_id from a previous analyze result when available; otherwise describe the item.",
+      "Wardrobe-aware verdict (BUY / SKIP / CONSIDER) for a product, citing similar items they already own. ONLY when the user asks for your opinion on buying it (\"should I buy this?\", \"is it worth it?\", \"do I need it?\"). Never after a plain search, a photo, or \"buy it\". Pass match_id from a previous result when available; otherwise describe the item.",
     input_schema: {
       type: "object",
       properties: {
@@ -135,6 +169,17 @@ const Schemas = {
   build_outfit: z.object({ title: str, item_ids: z.array(z.string()).min(1).max(8), note: z.string().max(300).optional() }),
   analyze_image: z.object({ image_index: z.number().int().min(0).optional() }),
   analyze_reel: z.object({ url: z.string().url() }),
+  search_products: z.object({
+    query: str,
+    category: z.enum(["outerwear", "top", "bottom", "dress", "shoes", "accessory"]),
+    subcategory: str.optional(),
+    color: str.optional(),
+    occasion: z.enum(["casual", "smart-casual", "formal", "athletic", "going-out", "outdoor"]).optional(),
+    max_price_usd: z.number().positive().max(100_000).optional(),
+    min_price_usd: z.number().min(0).max(100_000).optional(),
+    gender: z.enum(["male", "female"]).optional(),
+  }),
+  add_to_wardrobe: z.object({ image_index: z.number().int().min(0).optional(), which: z.string().max(300).optional() }),
   buy_check: z.object({ match_id: z.string().optional(), item_desc: z.string().max(500).optional() }),
   create_purchase_intent: z.object({ match_id: z.string().optional() }),
   find_donation_places: z.object({ kind: z.enum(["thrift", "consignment", "donation_dropoff", "recycling"]).optional() }),
@@ -222,6 +267,49 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolContext)
         const a = await analyzeImage(ctx.userId, image, ctx.meta);
         if (a.identified.length) ctx.cards.push(a.card);
         return { content: JSON.stringify(analysisForModel(a)) };
+      }
+
+      case "search_products": {
+        const q = input as z.infer<typeof Schemas.search_products>;
+        const a = await searchProducts(
+          ctx.userId,
+          {
+            query: q.query,
+            category: q.category,
+            subcategory: q.subcategory ?? null,
+            color: q.color ?? null,
+            occasion_tags: q.occasion ? [q.occasion] : [],
+            max_price_usd: q.max_price_usd ?? null,
+            min_price_usd: q.min_price_usd ?? null,
+            gender: q.gender ?? null,
+          },
+          ctx.meta,
+        );
+        if (a.matches.length) ctx.cards.push(a.card);
+        const out = analysisForModel(a);
+        return {
+          content: JSON.stringify(
+            a.matches.length ? out : { ...out, note: "No listings matched that search (and budget). Say so and suggest loosening it." },
+          ),
+        };
+      }
+
+      case "add_to_wardrobe": {
+        const { image_index, which } = input as z.infer<typeof Schemas.add_to_wardrobe>;
+        let image: { bytes: Buffer; publicUrl: string } | undefined = ctx.images[image_index ?? 0] ?? ctx.images[0];
+        if (!image) {
+          const url = await lastSentPhotoUrl(ctx.userId);
+          if (!url) return { content: "No photo to add. Ask the user to send a photo of the piece they own.", isError: true };
+          image = { bytes: (await fetchImage(url)).bytes, publicUrl: url };
+        }
+        const items = await addPhotoToWardrobe(ctx.userId, image, which ?? ctx.userText ?? "");
+        if (!items.length) return { content: JSON.stringify({ added: [], note: "No clothing found in that photo. Ask for a clearer shot." }) };
+        return {
+          content: JSON.stringify({
+            added: items.map((i) => ({ id: i.id, name: i.brand ? `${i.brand} ${i.name}` : i.name, category: i.category, color: i.color })),
+            note: "Saved to the user's wardrobe with their photo. Confirm in a few words; no verdict or shopping unless asked.",
+          }),
+        };
       }
 
       case "analyze_reel": {

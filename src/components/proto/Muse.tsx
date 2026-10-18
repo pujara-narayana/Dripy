@@ -10,8 +10,11 @@ import { mascot } from "@/components/proto/mascots";
 import { ChatInput, Chips, FairyMsg, TypingMsg, UserMsg } from "@/components/proto/Chat";
 import { catalogById, type CatalogItem } from "@/data/catalog";
 import { FairyMascot } from "@/components/proto/FairyMascot";
+import { Linkify } from "@/components/proto/Linkify";
+import { MAX_CHAT_IMAGES, toChatImage, type ChatImage } from "@/client/images";
 import { useCheckout } from "@/components/proto/useCheckout";
 import {
+  attachmentUrls,
   getChatHistory,
   getWardrobe,
   money,
@@ -56,6 +59,8 @@ type ChatMessage = {
   id: string;
   role: "user" | "fairy";
   text: ReactNode;
+  /** Photos the user sent with the message. */
+  images?: string[];
   picks?: ChatPick[];
   intents?: PurchaseIntentCard[];
   mode?: Mode | "offline";
@@ -69,9 +74,9 @@ function fairyText(body: string, cards: Card[]): ReactNode {
   const notes = notesFromCards(cards);
   return (
     <>
-      <span className="whitespace-pre-line [overflow-wrap:anywhere]">{body}</span>
+      <Linkify text={body} className="whitespace-pre-line [overflow-wrap:anywhere]" />
       {notes.map((n) => (
-        <span key={n} className="mt-2 block font-medium">{n}</span>
+        <Linkify key={n} text={n} className="mt-2 block font-medium" />
       ))}
     </>
   );
@@ -81,7 +86,10 @@ const intentsOf = (cards: Card[]) => cards.filter((c): c is PurchaseIntentCard =
 
 function fromHistory(m: HistoryMessage): ChatMessage {
   const via = m.channel === "web" ? undefined : m.channel;
-  if (m.direction === "inbound") return { id: m.id, role: "user", text: m.body ?? (m.attachments.length ? "📷 Photo" : ""), ...(via ? { via } : {}) };
+  if (m.direction === "inbound") {
+    const images = attachmentUrls(m);
+    return { id: m.id, role: "user", text: m.body ?? (images.length ? "" : "📷 Photo"), ...(images.length ? { images } : {}), ...(via ? { via } : {}) };
+  }
   const picks = picksFromCards(m.cards);
   const intents = intentsOf(m.cards);
   return {
@@ -124,6 +132,8 @@ export function Muse() {
   const chatPanel = useRef<PanelImperativeHandle | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [attachments, setAttachments] = useState<ChatImage[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const [typing, setTyping] = useState(false);
   const [tab, setTab] = useState<(typeof wardrobeTabs)[number]>("Daily");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -145,7 +155,7 @@ export function Muse() {
     setMessages((prev) => [...prev, { id: `local-${prev.length}-${Date.now()}`, role: "fairy", ...msg }]);
 
   const checkout = useCheckout(({ reply }) => {
-    addFairy({ text: <span className="whitespace-pre-line">{reply}</span> });
+    addFairy({ text: <Linkify text={reply} className="whitespace-pre-line [overflow-wrap:anywhere]" /> });
     loadWardrobe();
   });
 
@@ -162,14 +172,29 @@ export function Muse() {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages, typing]);
 
+  const addFiles = (files: File[]) => {
+    setAttachError(null);
+    const room = MAX_CHAT_IMAGES - attachments.length;
+    if (files.length > room) setAttachError(`You can send up to ${MAX_CHAT_IMAGES} photos at a time.`);
+    for (const file of files.slice(0, Math.max(room, 0))) {
+      toChatImage(file).then(
+        (img) => setAttachments((prev) => (prev.length < MAX_CHAT_IMAGES ? [...prev, img] : prev)),
+        (err: unknown) => setAttachError(err instanceof Error ? err.message : "Couldn't attach that photo."),
+      );
+    }
+  };
+
   const send = (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || typing) return;
-    setMessages((prev) => [...prev, { id: `local-${prev.length}-${Date.now()}`, role: "user", text: trimmed }]);
+    const images = attachments.map((a) => a.dataUrl);
+    if ((!trimmed && images.length === 0) || typing) return;
+    setMessages((prev) => [...prev, { id: `local-${prev.length}-${Date.now()}`, role: "user", text: trimmed, ...(images.length ? { images } : {}) }]);
     setInput("");
+    setAttachments([]);
+    setAttachError(null);
     setTyping(true);
     // Ask the Dripy agent (/api/chat). If it errors, fall back to the canned replies.
-    sendChat(trimmed)
+    sendChat(trimmed, images)
       .then((res) => {
         const picks = picksFromCards(res.cards);
         const intents = intentsOf(res.cards);
@@ -179,7 +204,8 @@ export function Muse() {
           ...(intents.length ? { intents } : {}),
           mode: res.meta.mode,
         });
-        if (res.cards.some((c) => c.type === "payment_confirmation")) loadWardrobe();
+        // Purchases and "add this to my closet" both change the wardrobe; reload it after each reply.
+        loadWardrobe();
       })
       .catch((err: unknown) => {
         console.warn("Dripy API unavailable, using canned reply", err);
@@ -226,7 +252,16 @@ export function Muse() {
                   {messages.map((m) =>
                     m.role === "user" ? (
                       <div key={m.id}>
-                        <UserMsg>{m.text}</UserMsg>
+                        {m.images && (
+                          <div className="mb-1.5 flex justify-end gap-2">
+                            {m.images.map((src) => (
+                              <a key={src.slice(0, 120)} href={src.startsWith("data:") ? undefined : src} target="_blank" rel="noopener noreferrer">
+                                <img src={src} alt="Photo you sent" className="h-32 max-w-[12rem] rounded-2xl border border-border object-cover" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                        {m.text ? <UserMsg>{m.text}</UserMsg> : null}
                         {m.via && <p className="mt-1 text-right text-[10px] uppercase tracking-wide text-muted-foreground">via iMessage</p>}
                       </div>
                     ) : (
@@ -273,7 +308,17 @@ export function Muse() {
             <div className="shrink-0 bg-background pb-6 pt-4">
               <div className="mx-auto w-full max-w-2xl space-y-3">
                 <Chips items={["What should I wear today?", "Buy the last thing I sent you", "Where can I donate clothes?"]} onPick={send} />
-                <ChatInput value={input} onChange={setInput} onSubmit={() => send(input)} placeholder="Ask fairy — or paste a link" />
+                {attachError && <p role="alert" className="text-xs text-destructive">{attachError}</p>}
+                <ChatInput
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={() => send(input)}
+                  placeholder={attachments.length ? "Add a note, or just send" : "Ask fairy — paste a link or a photo"}
+                  images={attachments}
+                  onAddFiles={addFiles}
+                  onRemoveImage={(id) => setAttachments((prev) => prev.filter((a) => a.id !== id))}
+                  disabled={typing}
+                />
               </div>
             </div>
           </main>

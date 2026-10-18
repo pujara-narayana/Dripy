@@ -71,6 +71,20 @@ export function subcategorySimilarity(c: Candidate, item: WardrobeItem): number 
   return 0.5; // same category, different cut
 }
 
+// Cuts that do the same job: a black bomber and a black biker jacket are both "the black
+// jacket". Other cuts don't stand in for each other (a white hoodie is not a white shirt).
+const INTERCHANGEABLE = [/\b(jacket|bomber|biker|trucker|blouson|harrington)\b/];
+
+/** Same cut, or interchangeable cuts: the precondition for counting as a near-dupe. */
+export function sameRole(c: Candidate, item: WardrobeItem): boolean {
+  const sub = subcategorySimilarity(c, item);
+  if (sub === 1) return true;
+  if (sub === 0) return false;
+  const a = cut(c.subcategory);
+  const b = cut(item.subcategory);
+  return INTERCHANGEABLE.some((re) => re.test(a) && re.test(b));
+}
+
 /** 0..1 — 1.0 is "basically the same piece". */
 export function similarity(c: Candidate, item: WardrobeItem): number {
   if (norm(c.category) !== norm(item.category)) return 0;
@@ -103,6 +117,7 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2).replace(/\.00$/, "
 export function scoreCandidate(c: Candidate, wardrobe: WardrobeItem[]): Score {
   const sameCategory = wardrobe.filter((w) => norm(w.category) === norm(c.category));
   const near = sameCategory
+    .filter((item) => sameRole(c, item))
     .map((item) => ({ item, s: similarity(c, item) }))
     .filter((x) => x.s >= NEAR_DUPE)
     .sort((a, b) => b.s - a.s);

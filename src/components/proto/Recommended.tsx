@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight, CheckCircle2, Heart, Search, Shuffle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Linkify } from "@/components/proto/Linkify";
 import { useCheckout } from "@/components/proto/useCheckout";
 import { getShop, money, type ShopItem } from "@/client/dripy-api";
 
@@ -69,7 +70,7 @@ export function Recommended() {
           <div role="status" className="mt-6 flex items-start gap-3 rounded-2xl border border-border bg-card p-4">
             <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-secondary" />
             <div className="min-w-0 flex-1 text-sm">
-              <p className="whitespace-pre-line">{bought}</p>
+              <Linkify text={bought} className="block whitespace-pre-line [overflow-wrap:anywhere]" />
               <Link href="/" className="mt-1 inline-block text-primary hover:underline">See it in your closet</Link>
             </div>
             <Button variant="ghost" size="icon" aria-label="Dismiss" onClick={() => setBought(null)}><X /></Button>

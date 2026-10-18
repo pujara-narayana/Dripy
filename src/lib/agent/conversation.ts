@@ -4,7 +4,6 @@ import type { ToolContext } from "@/lib/agent/tools";
 import { db, must } from "@/lib/db/client";
 import { getUser, listWardrobe } from "@/lib/db/queries";
 import { formatMoney, type RequestMeta } from "@/lib/http";
-import { paymentLabel } from "@/lib/integrations/payments";
 import type { LlmPart } from "@/lib/llm";
 import { classifyApproval } from "@/lib/payments/approvalRouter";
 import { approveAndPay, cancelIntent, getIntent, getOpenIntent, IntentRejected, intentCard } from "@/lib/payments/intents";
@@ -64,11 +63,11 @@ function paymentReply(card: Card, nudge: string | null): string {
   if (card.type === "payment_confirmation") {
     const c = card as PaymentConfirmationCard;
     if (c.status === "paid") {
-      const card = c.card ? `${c.card.brand.toUpperCase()} •••• ${c.card.last4}, ` : "";
+      const card = c.card ? ` with your ${c.card.brand.toUpperCase()} •••• ${c.card.last4}` : "";
       const closet = c.receipt?.emailed
-        ? `Your ${c.receipt.retailer} receipt (demo) just landed in your inbox, and it's in your closet now.`
+        ? `Your ${c.receipt.retailer} receipt just landed in your inbox, and it's in your closet now.`
         : "It's in your closet now.";
-      return [`Done ✅ Paid ${formatMoney(c.amount_cents, c.currency)} at ${c.merchant_domain} (${card}${paymentLabel(c.mode)}). ${closet}`, nudge]
+      return [`Done ✅ Paid ${formatMoney(c.amount_cents, c.currency)} at ${c.merchant_domain}${card}. ${closet}`, nudge]
         .filter(Boolean)
         .join("\n\n");
     }
@@ -143,7 +142,7 @@ export async function handleTurn(input: TurnInput, meta: RequestMeta): Promise<T
   }).format(new Date());
   const serverContext = [
     `Server context for this turn (from Dripy, not the user). Now: ${now} (Seattle). Channel: ${input.channel}.`,
-    input.images.length ? `The user attached ${input.images.length} image(s) to this message; analyze_image can read them.` : "No image attached to this message.",
+    input.images.length ? `The user attached ${input.images.length} image(s) to this message: analyze_image if they want to shop it, add_to_wardrobe if they say they own it.` : "No image attached to this message.",
     user?.current_match_id ? `Product currently under discussion: match_id ${user.current_match_id}.` : "No product is currently under discussion.",
     open
       ? `A checkout is waiting for the user's YES: ${open.item_name}, ${formatMoney(open.amount_cents)} at ${open.merchant_domain}. If they ask to buy a different product, create a new intent (it replaces this one).`
@@ -155,6 +154,7 @@ export async function handleTurn(input: TurnInput, meta: RequestMeta): Promise<T
     channel: input.channel,
     meta,
     images: input.images,
+    userText: input.text,
     lat: input.lat,
     lng: input.lng,
     cards: [],

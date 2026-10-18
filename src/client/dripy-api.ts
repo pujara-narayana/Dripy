@@ -41,8 +41,19 @@ export const getAccount = () => call<Account>("/api/auth/me");
 
 // ---- chat -------------------------------------------------------------------------
 
-export const sendChat = (message: string, signal?: AbortSignal) =>
-  call<ChatResponse>("/api/chat", { json: { message }, ...(signal ? { signal } : {}) });
+/** `images`: data: URLs of attached photos (see src/client/images.ts), up to 3. */
+export const sendChat = (message: string, images: string[] = [], signal?: AbortSignal) =>
+  call<ChatResponse>("/api/chat", {
+    json: { message, ...(images.length ? { attachments: images.map((data_url) => ({ type: "image", data_url })) } : {}) },
+    ...(signal ? { signal } : {}),
+  });
+
+/** Image URLs stored on a past chat message (photos sent on iMessage or the web). */
+export function attachmentUrls(m: HistoryMessage): string[] {
+  return m.attachments
+    .map((a) => (a && typeof a === "object" && typeof (a as { url?: unknown }).url === "string" ? (a as { url: string }).url : null))
+    .filter((u): u is string => !!u);
+}
 
 export type HistoryMessage = ChatHistoryResponse["messages"][number];
 export const getChatHistory = () => call<ChatHistoryResponse>("/api/chat/history?limit=50").then((r) => r.messages);

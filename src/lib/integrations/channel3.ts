@@ -80,11 +80,26 @@ export async function imageSearch(base64Jpeg: string, meta: RequestMeta): Promis
   }
 }
 
-/** Text search, used for the market price median and as a backup to the image search. */
-export async function textSearch(query: string, meta: RequestMeta): Promise<RawMatch[]> {
+export interface SearchFilters {
+  maxPriceUsd?: number | null;
+  minPriceUsd?: number | null;
+  gender?: "male" | "female" | null;
+}
+
+/** Text search: the market price median for a photo, and "find me X under $Y" requests. */
+export async function textSearch(query: string, meta: RequestMeta, f: SearchFilters = {}): Promise<RawMatch[]> {
   try {
-    const products = await post("/search", { query, limit: 20 }, 10_000);
-    return products.map(toMatch).filter((m): m is RawMatch => m != null);
+    const price =
+      f.maxPriceUsd != null || f.minPriceUsd != null
+        ? { ...(f.minPriceUsd != null ? { min_price: f.minPriceUsd } : {}), ...(f.maxPriceUsd != null ? { max_price: f.maxPriceUsd } : {}) }
+        : null;
+    const filters = { ...(price ? { price } : {}), ...(f.gender ? { gender: f.gender } : {}) };
+    const products = await post("/search", { query, limit: 20, ...(Object.keys(filters).length ? { filters } : {}) }, 10_000);
+    const max = f.maxPriceUsd != null ? f.maxPriceUsd * 100 : null;
+    // Filter again on our side: the offer we pick may not be the one Channel3 priced.
+    return products
+      .map(toMatch)
+      .filter((m): m is RawMatch => m != null && (max == null || m.price_cents == null || m.price_cents <= max));
   } catch (err) {
     console.error("channel3 search failed", err);
     meta.fallback("channel3");

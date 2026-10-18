@@ -37,6 +37,15 @@ web chat ───────────────────────�
                            3. otherwise → Gemini tool loop (agent/loop.ts)
 ```
 
+**Agent tools** (`src/lib/agent/tools.ts`): `search_wardrobe`, `build_outfit`,
+`search_products` (find products from a description alone, with `max_price_usd` / `gender`
+passed to Channel3 as filters), `analyze_image`, `analyze_reel`, `add_to_wardrobe` (a photo
+of something the user owns → wardrobe rows with `source: "upload"` and the photo; uses the
+last photo they sent if the message has none), `buy_check` (only when the user asks for an
+opinion: "should I buy this?"), `create_purchase_intent`, `find_donation_places`,
+`get_weather`. Text searches produce the same `reel_matches` card (with
+`source_image_url: null`) and `match_id`s as photos, so "buy the first one" works after either.
+
 **Payment safety (the Visa-track story):** the model has no "pay" tool. It can only
 *propose* a checkout (`create_purchase_intent(match_id)`); the amount and store come from
 the stored product match, never from the model. Payment runs only when the user's own
@@ -51,14 +60,16 @@ index, a $300 cap, a known store domain with an https product link (any store; n
 charged off-session to a saved Visa test card •••• 4242 after the user's YES; live keys are
 refused) · `visa_sandbox` (Visa Intelligent Commerce, needs Visa-issued credentials; **not in
 use**: the team chose Stripe test mode, and the adapter's request bodies are unverified).
-**After payment: demo receipt → wardrobe.** The paying request (only the one that wins the
+**After payment: receipt → wardrobe.** The paying request (only the one that wins the
 `approved → paid` transition, or the webhook) builds an order confirmation styled for the
 store the user bought from (`src/lib/pipelines/purchaseReceipt.ts`), emails it from the
 connected Gmail to the buyer's sign-up address (to itself for the seeded demo user, whose
 address is fake), reads the sent copy back and parses it with the same Gemini receipt parser
 as real order emails. The item enters the wardrobe with `source: "purchase"` and a
-`receipt_id`. The email is labeled as a demo in its subject, banner and footer, and is sent
-from the connected account's address (the display name is "<Store> via Dripy (demo)"). Without Gmail send it stays in-app (`fallbacks: ["gmail_send"]`);
+`receipt_id`. The email reads like a normal order confirmation (no "demo" label, no test-mode line) but never
+claims to be from the store: it is sent from the connected account's address as "<Store> via
+Dripy", and the footer says Dripy sent it and isn't affiliated with the store. The checkout
+prompts before YES still say "Stripe test mode". Without Gmail send it stays in-app (`fallbacks: ["gmail_send"]`);
 if parsing fails the item is added directly (`purchase_receipt`). The `payment_confirmation`
 card carries `receipt: {retailer, emailed, wardrobe_item_ids}` on the paying turn.
 
@@ -211,4 +222,4 @@ real services whose keys are set.
 
 ## Not built yet (stretch, in order)
 
-Photo upload auto-tag (`/api/wardrobe/upload`), Style DNA, closet cleanout, price-drop watch. Parked: swipe deck, avatar, group chat.
+Style DNA, closet cleanout, price-drop watch. Parked: swipe deck, avatar, group chat.

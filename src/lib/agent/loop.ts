@@ -34,7 +34,7 @@ function cardSummary(c: Card): string {
     case "purchase_intent":
       return `[checkout card: ${c.item_name} ${formatMoney(c.amount_cents)} at ${c.merchant_domain}, status ${c.status}]`;
     case "payment_confirmation":
-      return `[payment ${c.status}: ${c.item_name} ${formatMoney(c.amount_cents)} (${c.mode})${c.receipt?.emailed ? `; demo receipt from ${c.receipt.retailer} emailed` : ""}]`;
+      return `[payment ${c.status}: ${c.item_name} ${formatMoney(c.amount_cents)}${c.receipt?.emailed ? `; receipt from ${c.receipt.retailer} emailed` : ""}]`;
     case "places":
       return `[donation places card: ${c.places.map((p) => p.name).join(", ")}]`;
     case "outfit":

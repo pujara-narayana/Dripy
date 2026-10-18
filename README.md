@@ -3,11 +3,12 @@
 **The AI stylist in your iMessages that talks you out of buying, and pays when you say yes.**
 DubHacks 2026 · Visa track
 
-Dripy knows your closet. Send it a screenshot of something you saw on TikTok and it finds where
-to buy it (real product links, any store), tells you whether you actually need it (citing what
-you already own), checks out with a Visa test card only after you reply YES, emails you the
-store's (demo) receipt and adds the item to your closet, and finds places to donate what you
-don't wear.
+Dripy knows your closet. Send it a screenshot of something you saw on TikTok, or just describe
+it ("a white trench coat for men under $300"), and it finds where to buy it (real product links,
+any store). Ask "should I buy this?" and it tells you whether you actually need it (citing what
+you already own). It checks out with a Visa test card only after you reply YES, emails you the
+order receipt and adds the item to your closet, saves clothes you already own from a photo
+("I have this, add it"), and finds places to donate what you don't wear.
 
 - **Backend:** Next.js 16 API routes · Supabase (Postgres + Storage) · Google Gemini · Channel3 (product search) · SerpAPI (fallback) · Stripe (test mode) · Photon (iMessage) · Open-Meteo (weather) · Geoapify (donation places) · Gmail (receipts in and out)
 - **Deployment:** only the website goes to Vercel; the iMessage worker runs on a laptop for demos.
@@ -55,7 +56,7 @@ pages (`/`, `/recommended`, `/donate`, `/dashboard`) need a session (`src/proxy.
 Demo flow: sign up with name, Gmail and phone → the page opens iMessage with the start code
 (the "Open iMessage" button stays as a fallback) → Dripy greets you with a wardrobe link → buy
 something (iMessage or the Recommended page): the first time you enter a Visa test card on
-`/checkout/:id`, after that it's one tap → the store's demo receipt is emailed to the Gmail you
+`/checkout/:id`, after that it's one tap → the store's order receipt is emailed to the Gmail you
 signed up with and the item lands in your closet with its photo → donate pieces on `/donate`
 and get the nearest drop-off in chat. iMessage and the web chat are one conversation, so the
 web agent knows what you sent on iMessage ("buy the other one from the photo I texted you").
@@ -64,6 +65,8 @@ Extra setup for this: run `supabase/migrations/0003_demo_card.sql` (already appl
 shared database; only needed on a new one), and set
 `DRIPY_IMESSAGE_HANDLE` (the Dripy line), `APP_URL` and `SESSION_SECRET` in `.env.local` (see
 `.env.example`; keep the template itself blank).
+The web chat takes photos too: the ＋ button, paste (⌘V a screenshot) or drag and drop, up to 3
+per message (resized in the browser before upload). Links in replies are clickable.
 If the chat API fails (no LLM key, Gemini quota used up) the web chat falls back to canned
 replies labelled "offline". The dashboard still shows sample stats.
 
@@ -90,13 +93,16 @@ for live products):
    "Hi Dripy! My code is XXXXXX"; send it from your **phone number** (see section 4).
 2. Dripy replies with the greeting and a wardrobe link; the link signs you in to your closet.
 3. The Recommended page shows shop pieces you don't own.
-4. Text a photo, then "should I buy this?": 3 matches and a verdict (15–30 s).
+4. Text a photo: 3 matches with links (15–30 s), no verdict. Then "should I buy this?": the verdict.
+   Or text "find me a white trench coat for men under $300" (no photo needed).
 5. "buy the first one" → "add your Visa card here: <link>" → enter `4242 4242 4242 4242`, any
    future MM/YY, any CVC and a name → pay. iMessage gets "Done ✅ Paid".
 6. Another photo → "buy it" → "Reply YES to pay … with VISA •••• 4242" → "yes" → paid.
-7. After each purchase: a "<Store> order DRP-… [demo receipt]" email, and the item in the closet.
-8. `/donate`: pick pieces → the nearest drop-off appears in the web chat and in iMessage.
-9. Buy on Recommended (one tap with the saved card), then in the web chat: "buy the other one
+7. After each purchase: a "Your <Store> order DRP-… is confirmed" email, and the item in the closet.
+8. Text a photo of something you own + "I already have this, add it to my wardrobe" → it's in
+   the closet with your photo (no product search, no verdict).
+9. `/donate`: pick pieces → the nearest drop-off appears in the web chat and in iMessage.
+10. Buy on Recommended (one tap with the saved card), then in the web chat: "buy the other one
    from the photo I texted you" → Approve & pay.
 
 Start over with `delete from users where phone = '+1XXXXXXXXXX';` in the Supabase SQL Editor.
@@ -112,9 +118,13 @@ The web chat endpoint is the same brain as iMessage. With `npm run dev` running:
 curl -s localhost:3000/api/chat -H 'content-type: application/json' \
   -d '{"message":"going to a rooftop dinner friday, what should I wear?"}'
 
-# Send a screenshot. Live search (Channel3) returns 3 real products with store links, then a
-# verdict: SKIP only if you own a near-duplicate (black bomber → SKIP), BUY if it fills a gap
-# (camel blazer → BUY), otherwise CONSIDER. ~15–30 s.
+# Search by description, no photo: real listings under the budget, with store links.
+curl -s localhost:3000/api/chat -H 'content-type: application/json' \
+  -d '{"message":"can you find a white trench coat for men under $300?"}'
+
+# Send a screenshot. Live search (Channel3) returns 3 real products with store links. Verdicts
+# only come when asked ("should I buy this?"): SKIP only if you own a near-duplicate of the same
+# cut (black bomber → SKIP), BUY if it fills a gap (camel blazer → BUY), otherwise CONSIDER. ~15–30 s.
 curl -s localhost:3000/api/chat -F "message=should I buy this?" -F "image=@bomber.png"   # → SKIP
 curl -s localhost:3000/api/chat -F "message=what about this one?" -F "image=@blazer.png" # → BUY
 
@@ -122,7 +132,7 @@ curl -s localhost:3000/api/chat -F "message=what about this one?" -F "image=@bla
 # test-mode charge on the Visa test card. If several products were discussed, Dripy asks which.
 curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"ok buy the first one"}'
 curl -s localhost:3000/api/chat -H 'content-type: application/json' -d '{"message":"yes"}'
-# After YES: a demo order confirmation from that store lands in the connected Gmail, is parsed
+# After YES: an order confirmation from that store lands in the connected Gmail, is parsed
 # by the receipt parser, and the item shows up in GET /api/wardrobe with source "purchase".
 
 # Donation spots near UW
@@ -202,7 +212,7 @@ npm run worker   # terminal 2: iMessage bridge → should print "event":"connect
 
 Dripy uses one connected Gmail account (in the team `.env.local` it's Narayana's): it reads
 order emails into the wardrobe (`POST /api/receipts/sync`) and, after each purchase, sends the
-store's demo receipt from that account to the buyer's sign-up address (to itself for the demo
+store's order receipt from that account to the buyer's sign-up address (to itself for the demo
 user Alex). For the demo, sign up with the connected address to show the receipt in that
 inbox, or with your own Gmail to get it there.
 

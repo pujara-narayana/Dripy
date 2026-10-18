@@ -1,6 +1,7 @@
 What's left for the hackathon
 Updated 2026-10-18 by Narayana (first version: 2026-10-17, ~11:15 PM PT, handoff from Jason).
 Frontend-branch notes added 2026-10-18, ~3 AM PT (see "ADDED ON THE `frontend` BRANCH").
+Pre-merge fixes on `frontend` added 2026-10-18 by Narayana (see "PRE-MERGE FIXES").
 
 ────────────────────────────────────────
 DECISIONS
@@ -10,9 +11,12 @@ DECISIONS
   for a live iMessage demo run `npm run worker` on a laptop, with DRIPY_BACKEND_URL pointing at
   the deployed site or localhost.
 - Payments: Stripe test mode on the Visa test card (4242). Visa Intelligent Commerce dropped.
-- After paying, Dripy emails a demo receipt "from" the store, via the connected Gmail, to the
+- After paying, Dripy emails an order receipt for the store, via the connected Gmail, to the
   buyer's sign-up address (to itself for the demo user Alex), and parses it into the wardrobe
-  (same parser as real order emails).
+  (same parser as real order emails). No "demo" labels in the email or the paid reply; it is
+  sent as "<Store> via Dripy" and the footer says Dripy sent it (not the store).
+- Verdicts only when asked ("should I buy this?"). Searches, photos and "buy it" get no
+  BUY/SKIP/CONSIDER and no "you already own…" commentary.
 - Demo vs. real run: for the demo, DEMO_CATALOG=true (curated bomber/blazer) and sign up with
   the connected Gmail; for a real run, DEMO_CATALOG=false (live Channel3) and any Gmail.
 - Any store is allowed (no merchant allowlist). Checkout still needs a known store domain and
@@ -90,6 +94,33 @@ Apple ID email, which Photon's shared number rejects ("can't route it to the rig
 Send from the phone number (README section 4).
 
 ────────────────────────────────────────
+PRE-MERGE FIXES ON `frontend` (2026-10-18, Narayana; not merged, not deployed)
+────────────────────────────────────────
+
+1. Text-only product search: "find a white trench coat for men under $300" works without a
+   photo (new `search_products` tool; Channel3 price/gender filters, SerpAPI fallback).
+   Listings naming the asked color/cut go first; prices under 20% of the median (bad
+   listings like a "$5 trench coat") are dropped. Results get match_ids, so "buy it" works.
+2. "I already have this, add it to my wardrobe" + photo → saved to the closet with the photo
+   (new `add_to_wardrobe` tool, source "upload"); no product search, no verdict. Works with
+   the last photo sent if the message has none.
+3. No unsolicited verdicts (prompt + tool description). Also fixed the scoring: a near-dupe
+   now needs the same cut (jackets count as one: bomber ≈ biker jacket); a white hoodie was
+   SKIPped citing a white linen shirt and a white tee.
+4. Website chat takes photos: ＋ button, paste, drag and drop, up to 3, resized in the browser
+   (Vercel's 4.5 MB request limit). Sent photos show in the chat, including iMessage ones.
+5. Links in web chat replies, shop and checkout messages are clickable (store links open in a
+   new tab, Dripy links in the same tab).
+6. No "demo" in the receipt email (subject, sender, banner, footer) or the "Done ✅ Paid"
+   reply. Still labeled before paying: the checkout prompt ("Stripe test mode") and the
+   /checkout page note.
+
+Tested: npm test, test:integrations (new: Channel3 filters, "Top picks" heading, receipt has
+no "demo"), typecheck, lint, build. Live: one Channel3 filtered search (20 results, all under
+$300). NOT tested live: the agent choosing the new tools (needs Gemini quota), photo upload
+in a browser, add-to-wardrobe end to end.
+
+────────────────────────────────────────
 BEFORE ANYTHING ELSE
 ────────────────────────────────────────
 
@@ -108,11 +139,12 @@ BEFORE ANYTHING ELSE
 WHAT'S LEFT, IN PRIORITY ORDER
 ────────────────────────────────────────
 
-1. Live re-test over iMessage after today's fixes: a non-demo item (e.g. linen trousers)
-   should get CONSIDER/BUY, not SKIP; "buy it" at any store should reach "Reply YES"; after
-   YES only the "Done ✅ Paid …" reply should arrive.
+1. Live re-test (iMessage and website) after the pre-merge fixes: text-only search with a
+   budget; a photo with no question gets matches but no verdict; "should I buy this?" gets
+   one; "I already have this, add it" adds to the closet; paste a screenshot into the web
+   chat; links are clickable; after YES the reply and email say nothing about "demo".
 
-2. Push `integrations` and merge it into main (not pushed yet).
+2. Merge `frontend` into main (Narayana does it; `integrations` is already in main).
 
 3. Deploy the website to Vercel: copy every .env.local variable (incl. CHANNEL3_API_KEY,
    GEOAPIFY_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REFRESH_TOKEN), create a

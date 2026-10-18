@@ -27,7 +27,10 @@ function cardText(card: Card, shown: Set<string>): { text: string | null; image:
         const url = link(m.url, shown);
         return `${i + 1}. ${m.name} — ${formatMoney(m.price_cents, m.currency)} at ${m.merchant_domain ?? m.merchant}${url ? `\n${url}` : ""}`;
       });
-      return { text: `Spotted: ${card.identified[0]?.label ?? "this look"}\n${lines.join("\n")}`, image: card.matches[0].image_url ?? null };
+      // Text searches have no source photo: "Top picks for <query>" instead of "Spotted".
+      const label = card.identified[0]?.label ?? "this look";
+      const heading = card.source_image_url === null ? `Top picks for ${label}` : `Spotted: ${label}`;
+      return { text: `${heading}\n${lines.join("\n")}`, image: card.matches[0].image_url ?? null };
     }
     case "verdict": {
       const reasons = card.reasons.slice(0, 3).map((r) => `• ${r}`);

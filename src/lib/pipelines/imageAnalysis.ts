@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { extract } from "@/lib/llm";
 import { db, must } from "@/lib/db/client";
@@ -177,11 +177,37 @@ export async function analyzeImage(
     median = medianCents(shopping.map((s) => s.price_cents));
   }
 
+  return saveAnalysis(userId, {
+    cacheKey,
+    imageUrl: image.publicUrl,
+    sourceUrl: opts.sourceUrl ?? null,
+    identified,
+    garment: primary ?? null,
+    ranked,
+    median,
+  });
+}
+
+type Garment = Pick<IdentifiedGarment, "category" | "subcategory" | "color" | "occasion_tags">;
+
+/** Store an analysis and its ranked matches; the first match becomes the product under discussion. */
+async function saveAnalysis(
+  userId: string,
+  a: {
+    cacheKey: string;
+    imageUrl: string | null;
+    sourceUrl: string | null;
+    identified: IdentifiedGarment[];
+    garment: Garment | null;
+    ranked: RawMatch[];
+    median: number | null;
+  },
+): Promise<Analysis> {
   const inserted = must(
     await db()
       .from("reel_analyses")
       .upsert(
-        { user_id: userId, cache_key: cacheKey, image_url: image.publicUrl, source_url: opts.sourceUrl ?? null, identified, mode: "live" },
+        { user_id: userId, cache_key: a.cacheKey, image_url: a.imageUrl, source_url: a.sourceUrl, identified: a.identified, mode: "live" },
         { onConflict: "cache_key" },
       )
       .select("id")
@@ -190,22 +216,23 @@ export async function analyzeImage(
   ) as { id: string };
 
   let matches: MatchRow[] = [];
-  if (ranked.length && primary) {
+  const g = a.garment;
+  if (a.ranked.length && g) {
     matches = must(
       await db()
         .from("product_matches")
         .insert(
-          ranked.map((m, rank) => ({
+          a.ranked.map((m, rank) => ({
             analysis_id: inserted.id,
             rank,
             name: m.name,
             brand: m.brand ?? m.merchant,
-            category: primary.category,
-            subcategory: primary.subcategory,
-            color: primary.color,
-            occasion_tags: primary.occasion_tags,
+            category: g.category,
+            subcategory: g.subcategory ?? null,
+            color: g.color ?? null,
+            occasion_tags: g.occasion_tags ?? [],
             price_cents: m.price_cents,
-            market_median_cents: median,
+            market_median_cents: a.median,
             currency: m.currency,
             merchant: m.merchant,
             merchant_domain: m.merchant_domain,
@@ -216,10 +243,73 @@ export async function analyzeImage(
         .select("*"),
       "save matches",
     ) as MatchRow[];
-    matches.sort((a, b) => (a as MatchRow & { rank: number }).rank - (b as MatchRow & { rank: number }).rank);
+    matches.sort((x, y) => (x as MatchRow & { rank: number }).rank - (y as MatchRow & { rank: number }).rank);
     await setCurrentMatch(userId, matches[0].id);
   }
-  return build(inserted.id, image.publicUrl, identified, matches, false);
+  return build(inserted.id, a.imageUrl, a.identified, matches, false);
+}
+
+// ---- Text path: "find me a white trench coat under $300" -----------------------------
+
+export interface ProductQuery {
+  /** Shopping query, e.g. "men's white trench coat". */
+  query: string;
+  category: IdentifiedGarment["category"];
+  subcategory?: string | null;
+  color?: string | null;
+  occasion_tags?: string[];
+  max_price_usd?: number | null;
+  min_price_usd?: number | null;
+  gender?: "male" | "female" | null;
+}
+
+/** Product search from words alone: same matches card and match_ids as a photo, so "buy it" works. */
+export async function searchProducts(userId: string, q: ProductQuery, meta: RequestMeta): Promise<Analysis> {
+  const garment: IdentifiedGarment = {
+    label: q.query,
+    category: q.category,
+    ...(q.subcategory ? { subcategory: q.subcategory } : {}),
+    ...(q.color ? { color: q.color } : {}),
+    ...(q.occasion_tags?.length ? { occasion_tags: q.occasion_tags } : {}),
+  };
+  const max = q.max_price_usd != null ? q.max_price_usd * 100 : null;
+  const min = q.min_price_usd != null ? q.min_price_usd * 100 : null;
+  const inBudget = (m: RawMatch) => m.price_cents != null && (max == null || m.price_cents <= max) && (min == null || m.price_cents >= min);
+
+  // Catalog search is loose: listings that name the color and cut asked for go first, and
+  // prices far below the rest (a "$5 trench coat" is a bad listing, not a deal) are dropped.
+  const words = (v: string | null | undefined) => (v ?? "").toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  const wanted = [words(q.color), words(q.subcategory)].filter((w) => w.length);
+  const relevance = (m: RawMatch) => wanted.filter((ws) => !ws.some((w) => m.name.toLowerCase().includes(w))).length;
+  const usable = (all: RawMatch[], med: number | null) =>
+    all
+      .filter((m) => inBudget(m) && (med == null || (m.price_cents ?? 0) >= med * 0.2))
+      .sort((a, b) => relevance(a) - relevance(b));
+
+  let ranked: RawMatch[] = [];
+  let median: number | null = null;
+  if (channel3Configured()) {
+    const results = await textSearch(q.query, meta, { maxPriceUsd: q.max_price_usd, minPriceUsd: q.min_price_usd, gender: q.gender });
+    median = medianCents(results.map((r) => r.price_cents));
+    ranked = rankMatches(usable(results, median), []);
+  }
+  if (!ranked.length) {
+    const query = [q.query, max != null ? `under $${q.max_price_usd}` : ""].filter(Boolean).join(" ");
+    const shopping = await shoppingResults(query, meta);
+    median = medianCents(shopping.map((s) => s.price_cents));
+    const candidates = rankMatches(usable(shopping, median), []);
+    ranked = [...(await resolveStoreLinks(candidates.slice(0, 3), meta)), ...candidates.slice(3)];
+  }
+  // Every search is fresh (prices and stock move); the key only has to be unique.
+  return saveAnalysis(userId, {
+    cacheKey: `text:${randomUUID()}`,
+    imageUrl: null,
+    sourceUrl: null,
+    identified: [garment],
+    garment,
+    ranked,
+    median,
+  });
 }
 
 /** Curated demo analyses (mode "cached") whose garment matches what vision just saw. */

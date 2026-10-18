@@ -1,3 +1,7 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { imageFiles, MAX_CHAT_IMAGES, type ChatImage } from "@/client/images";
 import { Garment, wardrobe } from "./Garment";
 import { mascot } from "./mascots";
 
@@ -54,30 +58,107 @@ export function ProductRow() {
   );
 }
 
-export function ChatInput({ value, onChange, onSubmit, placeholder = "Ask your fairy anything…" }: {
+export function ChatInput({ value, onChange, onSubmit, placeholder = "Ask your fairy anything…", images = [], onAddFiles, onRemoveImage, disabled = false }: {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   placeholder?: string;
+  /** Attached photos waiting to be sent (shown as removable thumbnails). */
+  images?: ChatImage[];
+  /** Picked, pasted or dropped image files; omit to hide the attach button. */
+  onAddFiles?: (files: File[]) => void;
+  onRemoveImage?: (id: string) => void;
+  disabled?: boolean;
 }) {
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const canAttach = !!onAddFiles && images.length < MAX_CHAT_IMAGES;
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();
       }}
-      className="flex items-center gap-3 rounded-full border border-border bg-card px-4 py-3 shadow-sm"
+      onDragOver={(e) => {
+        if (!onAddFiles || !e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        if (!onAddFiles) return;
+        e.preventDefault();
+        setDragging(false);
+        const files = imageFiles(e.dataTransfer);
+        if (files.length) onAddFiles(files);
+      }}
+      className={`rounded-3xl border bg-card px-4 py-3 shadow-sm transition-colors ${dragging ? "border-primary bg-accent" : "border-border"}`}
     >
-      <span className="text-muted-foreground">＋</span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label="Message fairy"
-        className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-      />
-      <span className="text-muted-foreground">◎</span>
-      <button type="submit" aria-label="Send message" className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm text-primary-foreground transition-transform hover:scale-105">↑</button>
+      {images.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {images.map((img) => (
+            <div key={img.id} className="relative">
+              <img src={img.dataUrl} alt={img.name || "Attached photo"} className="h-16 w-16 rounded-xl border border-border object-cover" />
+              {onRemoveImage && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveImage(img.id)}
+                  aria-label={`Remove ${img.name || "photo"}`}
+                  className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-[11px] text-background"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-3">
+        {onAddFiles ? (
+          <>
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              disabled={!canAttach}
+              aria-label="Attach a photo"
+              title={canAttach ? "Attach a photo (or paste / drop one)" : `Up to ${MAX_CHAT_IMAGES} photos`}
+              className="flex size-7 items-center justify-center rounded-full text-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+            >
+              ＋
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/*,.heic,.heif"
+              multiple
+              hidden
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])];
+                e.target.value = ""; // picking the same file again still fires onChange
+                if (files.length) onAddFiles(files);
+              }}
+            />
+          </>
+        ) : (
+          <span className="text-muted-foreground">＋</span>
+        )}
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onPaste={(e) => {
+            if (!onAddFiles) return;
+            const files = imageFiles(e.clipboardData);
+            if (!files.length) return; // plain text pastes as usual
+            e.preventDefault();
+            onAddFiles(files);
+          }}
+          placeholder={placeholder}
+          aria-label="Message fairy"
+          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+        />
+        <span className="text-muted-foreground">◎</span>
+        <button type="submit" disabled={disabled} aria-label="Send message" className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm text-primary-foreground transition-transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100">↑</button>
+      </div>
     </form>
   );
 }

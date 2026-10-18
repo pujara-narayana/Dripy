@@ -312,6 +312,16 @@ async function channel3() {
     assert.deepEqual(await textSearch("camel blazer", meta), []);
     assert.equal(meta.toMeta().fallback_used, false);
 
+    // "a white trench coat for men under $300": budget and gender go to Channel3 as filters,
+    // and anything over budget is dropped on our side too.
+    const trench = (price: number) => product([{ url: `https://www.cos.com/t${price}`, domain: "cos.com", price: { price }, availability: "InStock" }]);
+    const searchCalls = mockFetch({ "/v1/search": { products: [trench(250), trench(320)] } });
+    const found = await textSearch("men's white trench coat", meta, { maxPriceUsd: 300, gender: "male" });
+    assert.deepEqual(JSON.parse(String(searchCalls[0].init?.body)), {
+      query: "men's white trench coat", limit: 20, filters: { price: { max_price: 300 }, gender: "male" },
+    });
+    assert.deepEqual(found.map((f) => f.price_cents), [25000], "over-budget results are dropped");
+
     mockFetch({ "/v1/image-search": new Response('{"detail":"Invalid API key"}', { status: 401 }) });
     const failMeta = new RequestMeta();
     assert.deepEqual(await imageSearch("QUJD", failMeta), [], "errors fall back (SerpAPI path)");
@@ -335,6 +345,10 @@ function messagingLinks() {
   assert.ok(!details.includes("https://cos.com/2"), "link already in the reply isn't repeated");
   assert.equal(details.split("https://zara.com/1").length, 2, "verdict doesn't repeat the match link");
 
+  const textSearch: Card = { type: "reel_matches", analysis_id: "t", source_image_url: null, identified: [{ label: "men's white trench coat", category: "outerwear" }], matches: [match("5", "https://cos.com/5")] };
+  const searched = renderForMessaging("Here you go", [textSearch])[1];
+  assert.ok(searched?.kind === "text" && searched.text.startsWith("Top picks for men's white trench coat\n1. Item 5"), "text search isn't 'Spotted'");
+
   const intent: Card = { type: "purchase_intent", intent_id: "i", item_name: "Item 1", amount_cents: 5000, currency: "USD", merchant_domain: "zara.com", merchant_url: "https://zara.com/1", status: "awaiting_approval", approval_expires_at: null, mode: "stripe_test", prompt: "Reply YES" };
   assert.ok(renderForMessaging("Reply YES to pay", [intent]).some((p) => p.kind === "text" && p.text.includes("Rather check out yourself? https://zara.com/1")));
   const paid: Card = { type: "payment_confirmation", intent_id: "i", status: "paid", item_name: "Item 1", amount_cents: 5000, currency: "USD", merchant_domain: "zara.com", reference: "pi_1", mode: "stripe_test", receipt: { retailer: "Zara", emailed: true, wardrobe_item_ids: ["w"] } };
@@ -351,13 +365,14 @@ async function purchaseReceipt() {
   };
   const e = buildReceiptEmail(order);
   assert.equal(orderNumber(order.intentId), "DRP-4F9C2A1E");
-  assert.ok(e.subject.includes("H&M order DRP-4F9C2A1E") && e.subject.includes("demo"));
+  assert.ok(e.subject.includes("H&M order DRP-4F9C2A1E"));
   assert.ok(e.html.includes("Relaxed &lt;Wool&gt; Blazer"), "item names are HTML-escaped");
   for (const body of [e.text, e.html]) {
-    assert.ok(body.includes("DEMO RECEIPT") && body.includes("no real order was placed with H&") && body.includes("$79.90"), "labeled demo + amount");
+    assert.ok(!/demo/i.test(body) && body.includes("Sent by Dripy") && body.includes("not affiliated with H&") && body.includes("$79.90"), "no demo label, says Dripy sent it, amount");
   }
   const mime = toMime(e, "alex@example.com");
-  assert.ok(mime.startsWith('From: "H&M via Dripy (demo)" <alex@example.com>\r\nTo: <alex@example.com>'));
+  assert.ok(!/demo/i.test(e.subject + e.fromName), "no demo label in subject or sender");
+  assert.ok(mime.startsWith('From: "H&M via Dripy" <alex@example.com>\r\nTo: <alex@example.com>'));
   assert.ok(toMime(e, "alex@example.com", "sam@gmail.com").includes("\r\nTo: <sam@gmail.com>\r\n"), "receipt goes to the buyer's address");
   assert.ok(mime.includes("Content-Type: multipart/alternative") && mime.trimEnd().endsWith("--"));
   assert.ok(emailToText(toInboxText(e)).includes("Order total | $79.90"), "parser sees the order table");
