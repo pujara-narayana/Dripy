@@ -1,5 +1,6 @@
 What's left for the hackathon
 Updated 2026-10-18 by Narayana (first version: 2026-10-17, ~11:15 PM PT, handoff from Jason).
+Frontend-branch notes added 2026-10-18, ~3 AM PT (see "ADDED ON THE `frontend` BRANCH").
 
 ────────────────────────────────────────
 DECISIONS
@@ -9,8 +10,11 @@ DECISIONS
   for a live iMessage demo run `npm run worker` on a laptop, with DRIPY_BACKEND_URL pointing at
   the deployed site or localhost.
 - Payments: Stripe test mode on the Visa test card (4242). Visa Intelligent Commerce dropped.
-- After paying, Dripy emails a demo receipt "from" the store to the connected Gmail and parses
-  it into the wardrobe (same parser as real order emails).
+- After paying, Dripy emails a demo receipt "from" the store, via the connected Gmail, to the
+  buyer's sign-up address (to itself for the demo user Alex), and parses it into the wardrobe
+  (same parser as real order emails).
+- Demo vs. real run: for the demo, DEMO_CATALOG=true (curated bomber/blazer) and sign up with
+  the connected Gmail; for a real run, DEMO_CATALOG=false (live Channel3) and any Gmail.
 - Any store is allowed (no merchant allowlist). Checkout still needs a known store domain and
   an https product link, the user's YES, the $300 cap and the 10-minute expiry.
 - Product search: Channel3 first, SerpAPI as fallback.
@@ -57,8 +61,40 @@ curated matches (repeatable SKIP / BUY), but their links are store SEARCH pages.
 DEMO_CATALOG=false (current .env.local) every photo uses live Channel3 results.
 
 ────────────────────────────────────────
+ADDED ON THE `frontend` BRANCH (2026-10-18)
+────────────────────────────────────────
+
+The web app and the end-to-end demo flow:
+- Sign-up (name, Gmail, phone) → the page opens iMessage with a start code → Dripy links the
+  phone and greets with "I've parsed your Gmail and your digital wardrobe is ready: <link>".
+  The closet is a fixed Uniqlo starter closet (src/data/catalog.ts), not a real Gmail parse.
+- Shop (Recommended page): catalog pieces the user doesn't own, shuffled.
+- Visa checkout: the first purchase texts a signed /checkout/:id link with a Visa card form
+  (only brand + last 4 kept); after that "Reply YES" or a one-tap Approve on the web.
+- Donate from /donate: pieces leave the closet, the nearest drop-offs post to web chat and
+  iMessage (worker POST /send).
+- iMessage and web chat are one conversation: the agent now loads the last 40 messages (was
+  12) with user messages tagged [iMessage] / [website chat], so the web agent can buy a
+  product from a photo sent on iMessage.
+- Receipts go to the sign-up address (see Decisions).
+- next.config.ts allows *.trycloudflare.com as a dev origin, for phone testing through a
+  Cloudflare quick tunnel (APP_URL=https://<random>.trycloudflare.com). README has the steps.
+
+Tests (2026-10-18, frontend branch): typecheck, lint (only <img> warnings), npm test,
+test:integrations (mocked and --live), smoke:stripe, smoke:gemini and test:contract (mock
+mode, FORCE_FALLBACK=all) all pass. The live contract test was not run on purpose: it writes
+to the shared demo user, runs a real Gmail sync and uses ~12 Gemini requests.
+
+Not yet tested end to end over iMessage. First attempt: the start-code text went from an
+Apple ID email, which Photon's shared number rejects ("can't route it to the right agent").
+Send from the phone number (README section 4).
+
+────────────────────────────────────────
 BEFORE ANYTHING ELSE
 ────────────────────────────────────────
+
+- Run supabase/migrations/0003_demo_card.sql on the shared Supabase. Not applied as of
+  2026-10-18 (users.card_brand doesn't exist), so saving a Visa card on /checkout fails.
 
 - The Gmail OAuth client secret was shared in a chat channel. Rotate it after the hackathon.
 - Gmail refresh tokens in testing mode expire after 7 days: re-run `npm run gmail:auth` if
@@ -83,9 +119,11 @@ WHAT'S LEFT, IN PRIORITY ORDER
    Stripe webhook for the deployed URL and put its whsec_ in STRIPE_WEBHOOK_SECRET, and add
    the deployed /api/gmail/callback to the Google OAuth client if you ever re-auth there.
 
-4. Frontend (teammate): chat screen rendering cards[] first, then the wardrobe grid. Show
-   ProductMatch.url as a "Buy" link and payment_confirmation.receipt ("receipt emailed").
-   Build against mocks/ and BACKEND.md.
+4. Frontend: built on the `frontend` branch (see above). Left: a full rehearsal of the
+   sign-up → iMessage → buy (card, then YES) → receipt → donate → web buy flow on a phone.
+   With DEMO_CATALOG=true, check the bomber/blazer verdicts against a new account's Uniqlo
+   starter closet (the curated SKIP/BUY was tuned on Alex's closet); both demo purchases
+   should read as reasonable buys.
 
 5. Gemini resilience: each call can wait 45 s and retry 3×, so an overloaded model hangs
    replies. Shorter timeout + fallback model (gemini-3.5-flash / 3.6-flash were healthy

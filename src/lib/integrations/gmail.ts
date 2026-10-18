@@ -3,7 +3,7 @@ import { env, isForced } from "@/lib/env";
 
 // Gmail for the one demo user: a refresh token from `npm run gmail:auth` lives in .env.local,
 // so there's no OAuth flow or token table in the app itself. Scopes: gmail.readonly (order
-// emails) and gmail.send (Dripy emails the demo receipt of a purchase to the same inbox).
+// emails) and gmail.send (Dripy emails the demo receipt of a purchase to the buyer).
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 // Order confirmations. Promotions ("…your order" marketing) and Gmail's Purchases category
@@ -74,11 +74,12 @@ export async function fetchOrderEmails(max = 10): Promise<{ id: string; raw: str
 }
 
 /**
- * Send an email from the connected account to itself, then read it back the way the receipt
- * sync does. `build` gets the account's address and returns the full RFC 822 message.
- * A refresh token from before gmail.send was added fails here with 403 (re-run gmail:auth).
+ * Send an email from the connected account (to itself or anyone), then read the sent copy back
+ * the way the receipt sync does. `build` gets the account's address and returns the full
+ * RFC 822 message. A refresh token from before gmail.send was added fails here with 403
+ * (re-run gmail:auth).
  */
-export async function sendToSelf(build: (address: string) => string): Promise<{ id: string; raw: string }> {
+export async function sendAndReadBack(build: (address: string) => string): Promise<{ id: string; raw: string }> {
   const token = await accessToken();
   const { emailAddress } = await get<{ emailAddress: string }>(token, "/profile");
   const res = await fetch(`${API}/messages/send`, {

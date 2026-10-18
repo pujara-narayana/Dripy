@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +59,10 @@ export function SignUp() {
 export function StartChat({ account, onDone }: { account: Account; onDone: () => void }) {
   const first = account.user.name.split(" ")[0];
   const { handle, body, url } = account.imessage;
+  // Redirect straight to iMessage; the button below stays for browsers that block it.
+  useEffect(() => {
+    if (url) window.location.href = url;
+  }, [url]);
   return (
     <AuthCard>
       <div className="text-center">

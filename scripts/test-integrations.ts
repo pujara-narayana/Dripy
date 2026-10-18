@@ -8,7 +8,7 @@ import { env } from "../src/lib/env";
 import { RequestMeta } from "../src/lib/http";
 import { renderForMessaging } from "../src/lib/agent/render";
 import { imageSearch, textSearch, toMatch } from "../src/lib/integrations/channel3";
-import { fetchOrderEmails, gmailConfigured, messageToEmail, sendToSelf } from "../src/lib/integrations/gmail";
+import { fetchOrderEmails, gmailConfigured, messageToEmail, sendAndReadBack } from "../src/lib/integrations/gmail";
 import { domainFromSource, resolveStoreLinks, type RawMatch } from "../src/lib/integrations/serpapi";
 import { buildReceiptEmail, orderNumber, toInboxText, toMime } from "../src/lib/pipelines/purchaseReceipt";
 import type { Card } from "../src/lib/types";
@@ -358,6 +358,7 @@ async function purchaseReceipt() {
   }
   const mime = toMime(e, "alex@example.com");
   assert.ok(mime.startsWith('From: "H&M via Dripy (demo)" <alex@example.com>\r\nTo: <alex@example.com>'));
+  assert.ok(toMime(e, "alex@example.com", "sam@gmail.com").includes("\r\nTo: <sam@gmail.com>\r\n"), "receipt goes to the buyer's address");
   assert.ok(mime.includes("Content-Type: multipart/alternative") && mime.trimEnd().endsWith("--"));
   assert.ok(emailToText(toInboxText(e)).includes("Order total | $79.90"), "parser sees the order table");
 
@@ -375,7 +376,7 @@ async function purchaseReceipt() {
       },
       "/messages/sent1": { id: "sent1", payload: { mimeType: "multipart/alternative", headers: [{ name: "Subject", value: e.subject }], parts: [{ mimeType: "text/html", body: { data: b64(e.html) } }] } },
     });
-    const sent = await sendToSelf((addr) => toMime(e, addr));
+    const sent = await sendAndReadBack((addr) => toMime(e, addr));
     assert.equal(sent.id, "gmail:sent1");
     assert.ok(sentRaw.includes("<alex@example.com>") && sentRaw.includes(e.subject));
     assert.ok(calls.some((c) => c.url.endsWith("/messages/send") && c.init?.method === "POST"));
@@ -386,7 +387,7 @@ async function purchaseReceipt() {
       "/profile": { emailAddress: "alex@example.com" },
       "/messages/send": new Response('{"error":{"code":403,"message":"Request had insufficient authentication scopes."}}', { status: 403 }),
     });
-    await assert.rejects(sendToSelf((addr) => toMime(e, addr)), /re-run npm run gmail:auth/);
+    await assert.rejects(sendAndReadBack((addr) => toMime(e, addr)), /re-run npm run gmail:auth/);
     console.log("purchase receipt (mocked): passed");
   } finally {
     Object.assign(env, { googleClientId: saved.id, googleClientSecret: saved.secret, gmailRefreshToken: saved.token });

@@ -5,6 +5,7 @@ import type { WardrobeItem } from "@/lib/types";
 export interface UserRow {
   id: string;
   name: string;
+  email: string | null;
   phone: string | null;
   home_lat: number | null;
   home_lng: number | null;

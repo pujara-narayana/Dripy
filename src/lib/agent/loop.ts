@@ -5,9 +5,11 @@ import { runTool, TOOLS, type ToolContext } from "@/lib/agent/tools";
 import { env } from "@/lib/env";
 import { formatMoney } from "@/lib/http";
 import { gemini, isBlocked, type LlmPart, textOf, THINKING, toGeminiParts } from "@/lib/llm";
-import type { Card, WardrobeItem } from "@/lib/types";
+import type { Card, Channel, WardrobeItem } from "@/lib/types";
 
 const MAX_ITERATIONS = 6;
+
+const CHANNEL_NAMES: Record<Channel, string> = { imessage: "iMessage", sms: "SMS", whatsapp: "WhatsApp", web: "website chat" };
 
 const FUNCTION_DECLARATIONS: FunctionDeclaration[] = TOOLS.map((t) => ({
   name: t.name,
@@ -17,6 +19,7 @@ const FUNCTION_DECLARATIONS: FunctionDeclaration[] = TOOLS.map((t) => ({
 
 export interface HistoryMessage {
   direction: "inbound" | "outbound";
+  channel?: Channel;
   body: string | null;
   cards: Card[];
 }
@@ -48,7 +51,10 @@ export function historyToContents(history: HistoryMessage[]): Content[] {
   const out: Content[] = [];
   for (const h of history) {
     const role = h.direction === "inbound" ? "user" : "model";
-    const text = [h.body ?? "", ...h.cards.map(cardSummary)].filter(Boolean).join("\n").trim() || "(sent an image)";
+    const content = [h.body ?? "", ...h.cards.map(cardSummary)].filter(Boolean).join("\n").trim() || "(sent an image)";
+    // iMessage and the website chat are one conversation: tag where the user said it, so
+    // "the one I texted you" resolves from the website.
+    const text = h.direction === "inbound" && h.channel ? `[${CHANNEL_NAMES[h.channel]}] ${content}` : content;
     const last = out.at(-1);
     if (last && last.role === role) last.parts = [{ text: `${last.parts?.[0]?.text ?? ""}\n${text}` }];
     else out.push({ role, parts: [{ text }] });

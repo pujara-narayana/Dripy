@@ -1,21 +1,24 @@
 import "server-only";
 import type { RequestMeta } from "@/lib/http";
 import { formatMoney } from "@/lib/http";
-import { gmailConfigured, sendToSelf } from "@/lib/integrations/gmail";
+import { gmailConfigured, sendAndReadBack } from "@/lib/integrations/gmail";
 import { paymentLabel } from "@/lib/integrations/payments";
 import { parseReceiptEmail, saveReceipt } from "@/lib/pipelines/receipts";
 import type { PaymentMode, WardrobeItem } from "@/lib/types";
 
-// After a paid purchase, Dripy emails a merchant-style order confirmation to the connected
-// Gmail (send-to-self), reads it back and runs it through the same receipt parser as real
-// order emails, so the new item enters the wardrobe the way any other order would.
+// After a paid purchase, Dripy emails a merchant-style order confirmation from the connected
+// Gmail to the buyer's sign-up address (to itself for the seeded demo user), reads the sent
+// copy back and runs it through the same receipt parser as real order emails, so the new item
+// enters the wardrobe the way any other order would.
 // No order is actually placed with the store: the email says so in its banner and footer,
-// and is sent from the user's own address (the display name only names the store).
+// and is sent from the connected account's address (the display name only names the store).
 
 export interface ReceiptOrder {
   intentId: string;
   userId: string;
   customerName: string;
+  /** Where the receipt goes; null/absent sends it to the connected Gmail itself. */
+  customerEmail?: string | null;
   merchantName: string; // "Zara"
   merchantDomain: string; // "zara.com"
   merchantUrl: string;
@@ -110,15 +113,15 @@ function header(value: string): string {
 
 const wrap76 = (b64: string) => b64.replace(/.{1,76}/g, "$&\r\n").trimEnd();
 
-/** Full MIME message (multipart/alternative) for Gmail's send API. */
-export function toMime(e: ReceiptEmail, address: string): string {
+/** Full MIME message (multipart/alternative) for Gmail's send API, from `address` to `to`. */
+export function toMime(e: ReceiptEmail, address: string, to = address): string {
   const boundary = `dripy-${e.date.getTime().toString(36)}`;
   const name = header(e.fromName.replace(/["\\]/g, ""));
   const part = (type: string, body: string) =>
     [`--${boundary}`, `Content-Type: ${type}; charset=UTF-8`, "Content-Transfer-Encoding: base64", "", wrap76(Buffer.from(body, "utf8").toString("base64"))].join("\r\n");
   return [
     `From: "${name}" <${address}>`,
-    `To: <${address}>`,
+    `To: <${to}>`,
     `Subject: ${header(e.subject)}`,
     `Date: ${e.date.toUTCString()}`,
     "MIME-Version: 1.0",
@@ -137,7 +140,7 @@ export function toInboxText(e: ReceiptEmail): string {
 }
 
 /**
- * Email the receipt (Gmail send-to-self when connected; otherwise it stays in-app), then parse
+ * Email the receipt (via the connected Gmail to the buyer; otherwise it stays in-app), then parse
  * it into the wardrobe. Throws if parsing fails, so the caller can add the item directly.
  */
 export async function deliverPurchaseReceipt(
@@ -150,7 +153,7 @@ export async function deliverPurchaseReceipt(
   let emailed = false;
   if (gmailConfigured()) {
     try {
-      const sent = await sendToSelf((address) => toMime(email, address));
+      const sent = await sendAndReadBack((address) => toMime(email, address, o.customerEmail ?? address));
       ({ id: sourceId, raw } = sent);
       emailed = true;
     } catch (err) {

@@ -53,12 +53,12 @@ refused) · `visa_sandbox` (Visa Intelligent Commerce, needs Visa-issued credent
 use**: the team chose Stripe test mode, and the adapter's request bodies are unverified).
 **After payment: demo receipt → wardrobe.** The paying request (only the one that wins the
 `approved → paid` transition, or the webhook) builds an order confirmation styled for the
-store the user bought from (`src/lib/pipelines/purchaseReceipt.ts`), emails it to the
-connected Gmail (send-to-self, so it lands in the inbox the receipt sync reads), reads it back
-and parses it with the same Gemini receipt parser as real order emails. The item enters the
-wardrobe with `source: "purchase"` and a `receipt_id`. The email is labeled as a demo in its
-subject, banner and footer, and is sent from the user's own address (the display name is
-"<Store> via Dripy (demo)"). Without Gmail send it stays in-app (`fallbacks: ["gmail_send"]`);
+store the user bought from (`src/lib/pipelines/purchaseReceipt.ts`), emails it from the
+connected Gmail to the buyer's sign-up address (to itself for the seeded demo user, whose
+address is fake), reads the sent copy back and parses it with the same Gemini receipt parser
+as real order emails. The item enters the wardrobe with `source: "purchase"` and a
+`receipt_id`. The email is labeled as a demo in its subject, banner and footer, and is sent
+from the connected account's address (the display name is "<Store> via Dripy (demo)"). Without Gmail send it stays in-app (`fallbacks: ["gmail_send"]`);
 if parsing fails the item is added directly (`purchase_receipt`). The `payment_confirmation`
 card carries `receipt: {retailer, emailed, wardrobe_item_ids}` on the paying turn.
 
@@ -104,18 +104,27 @@ Checked-in examples of every response: `mocks/*.json`. `user_id` defaults to the
 route above uses the signed-in user when there is one, else `user_id` / the demo user, so curl
 and the contract tests still work. A new account gets the starter closet from
 `src/data/catalog.ts` (`source: "seed"`). Run `supabase/migrations/0003_demo_card.sql` for the
-card on file.
+card on file (not applied to the shared database yet as of 2026-10-18; saving a card fails
+until it is).
 
 **First purchase vs. later ones.** With no card on file, a purchase prompt is
 "add your Visa card here: <signed checkout link>" and a chat "yes" re-sends that link instead of
 paying. After the card page saves a card (brand + last 4 only), prompts become
 "Reply YES to pay … with VISA •••• 4242" and the web shows a one-tap Approve.
 
-**iMessage onboarding.** Sign-up pre-fills "Hi Dripy! My code is ABC123". The inbound route
+**iMessage onboarding.** After sign-up the page opens iMessage (`sms:` link, with a button as
+fallback) pre-filled with "Hi Dripy! My code is ABC123". The inbound route
 spots the code, links that sender's phone to the account and replies with a fixed greeting and
 a one-tap wardrobe login link (no LLM call). The worker keeps each sender's conversation and
 exposes `POST /send` (same `x-dripy-worker-secret`), so the backend can message someone after a
 web checkout or donation; it only reaches people who texted since the worker started.
+Photon's shared number only accepts phone-number senders: a text from an Apple ID email gets
+Photon's own "can't route it" reply and never reaches the worker.
+
+**One conversation across channels.** iMessage and the web chat share one history per user.
+Each agent turn loads the last 40 messages from both (`loadHistory`), with the user's
+messages tagged `[iMessage]` / `[website chat]`, so the web agent can buy a product that was
+discussed on iMessage by its `match_id`.
 
 Cards the chat can return: `reel_matches`, `verdict`, `purchase_intent`,
 `payment_confirmation`, `places`, `outfit`, `weather`, `error`. Render `purchase_intent.prompt`
@@ -167,7 +176,7 @@ credentials land; Instagram links ask for a screenshot (login wall).
 - **Gmail** (`GOOGLE_CLIENT_ID/SECRET` + `GMAIL_REFRESH_TOKEN` from `npm run gmail:auth`):
   `/api/receipts/sync` reads up to 10 recent order emails instead of the seeded inbox; falls
   back to the seeded inbox if Gmail fails. Scopes are `gmail.readonly` + `gmail.send` (send is
-  only used for the demo purchase receipt, to the account's own address); tokens made before
+  only used for the demo purchase receipt, sent to the buyer's sign-up address); tokens made before
   the send scope was added must be re-created with `npm run gmail:auth`. The OAuth client is a Web client with redirect
   `http://localhost:3000/api/gmail/callback` (stop `npm run dev` while signing in), and your
   account must be a test user. Testing-mode refresh tokens expire after 7 days. The inbox

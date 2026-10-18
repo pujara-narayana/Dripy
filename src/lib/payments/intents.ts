@@ -307,6 +307,9 @@ async function addPurchaseToWardrobe(
         intentId: intent.id,
         userId: intent.user_id,
         customerName: user?.name ?? "there",
+        // Signed-up accounts get it at their sign-up address; the seeded demo user's address is
+        // fake, so its receipt stays in the connected inbox.
+        customerEmail: intent.user_id === env.demoUserId ? null : (user?.email ?? null),
         merchantName: match.merchant ?? intent.merchant_domain,
         merchantDomain: intent.merchant_domain,
         merchantUrl: intent.merchant_url,

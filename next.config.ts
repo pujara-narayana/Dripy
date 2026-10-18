@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  // Phone testing over a Cloudflare quick tunnel (APP_URL=https://<random>.trycloudflare.com).
+  allowedDevOrigins: ["*.trycloudflare.com"],
   turbopack: {
     rules: {
       "*.css": {

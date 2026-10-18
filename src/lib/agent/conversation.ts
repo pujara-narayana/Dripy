@@ -46,11 +46,12 @@ async function saveMessage(row: {
   return must(res, "save chat message") as { id: string };
 }
 
-async function loadHistory(userId: string, limit = 12): Promise<HistoryMessage[]> {
+// Long enough that a photo sent on iMessage early in the demo is still in context on the website.
+async function loadHistory(userId: string, limit = 40): Promise<HistoryMessage[]> {
   const rows = must(
     await db()
       .from("chat_messages")
-      .select("direction,body,cards,created_at")
+      .select("direction,channel,body,cards,created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(limit),

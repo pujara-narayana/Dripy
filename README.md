@@ -18,7 +18,7 @@ don't wear.
 
 ## 1. Get it running (5 minutes)
 
-**You need:** Node.js 22+ (`node -v`) and git.
+**You need:** Node.js 22+ (`node -v`) and git. On a Mac without Node: `brew install node`.
 
 ```bash
 git clone https://github.com/pujara-narayana/Dripy.git
@@ -52,15 +52,56 @@ The UI is served by the same Next.js app: with `npm run dev` running, open
 **http://localhost:3000**. Signed-out visitors land on `/welcome` (sign up / log in); the app
 pages (`/`, `/recommended`, `/donate`, `/dashboard`) need a session (`src/proxy.ts`).
 
-Demo flow: sign up with name, Gmail and phone → "Open iMessage" sends the start code → Dripy
-greets you with a wardrobe link → buy something (iMessage or the Recommended page): the first
-time you enter a Visa test card on `/checkout/:id`, after that it's one tap → the item lands in
-your closet with its photo → donate pieces on `/donate` and get the nearest drop-off in chat.
+Demo flow: sign up with name, Gmail and phone → the page opens iMessage with the start code
+(the "Open iMessage" button stays as a fallback) → Dripy greets you with a wardrobe link → buy
+something (iMessage or the Recommended page): the first time you enter a Visa test card on
+`/checkout/:id`, after that it's one tap → the store's demo receipt is emailed to the Gmail you
+signed up with and the item lands in your closet with its photo → donate pieces on `/donate`
+and get the nearest drop-off in chat. iMessage and the web chat are one conversation, so the
+web agent knows what you sent on iMessage ("buy the other one from the photo I texted you").
 
-Extra setup for this: run `supabase/migrations/0003_demo_card.sql`, and set
-`DRIPY_IMESSAGE_HANDLE` (the Dripy line), `APP_URL` and `SESSION_SECRET` (see `.env.example`).
+Extra setup for this: run `supabase/migrations/0003_demo_card.sql` (**not applied to the shared
+database yet** as of 2026-10-18; saving a card fails without it), and set
+`DRIPY_IMESSAGE_HANDLE` (the Dripy line), `APP_URL` and `SESSION_SECRET` in `.env.local` (see
+`.env.example`; keep the template itself blank).
 If the chat API fails (no LLM key, Gemini quota used up) the web chat falls back to canned
 replies labelled "offline". The dashboard still shows sample stats.
+
+### Testing on your phone (iMessage + website)
+
+The links Dripy texts (wardrobe login, Visa checkout) and shop photos use `APP_URL`, so your
+phone has to reach the laptop. A Cloudflare quick tunnel is the simplest way:
+
+```bash
+brew install cloudflared
+cloudflared tunnel --url http://localhost:3000   # prints https://<random>.trycloudflare.com
+```
+
+Set `APP_URL` to that URL in `.env.local`, restart `npm run dev`, and start the worker
+(section 4). Keep `DRIPY_BACKEND_URL` and `PHOTON_WORKER_URL` on localhost. The quick-tunnel URL
+changes every time cloudflared restarts. `next.config.ts` allows `*.trycloudflare.com` as a dev
+origin; without that, pages opened through the tunnel load but their scripts are blocked (the
+checkout form does nothing).
+
+End-to-end test, in demo order (`DEMO_CATALOG=true` for the curated bomber/blazer; `false`
+for live products):
+
+1. On the iPhone, open `APP_URL/signup` and enter name, Gmail and phone. Messages opens with
+   "Hi Dripy! My code is XXXXXX"; send it from your **phone number** (see section 4).
+2. Dripy replies with the greeting and a wardrobe link; the link signs you in to your closet.
+3. The Recommended page shows shop pieces you don't own.
+4. Text a photo, then "should I buy this?": 3 matches and a verdict (15–30 s).
+5. "buy the first one" → "add your Visa card here: <link>" → enter `4242 4242 4242 4242`, any
+   future MM/YY, any CVC and a name → pay. iMessage gets "Done ✅ Paid".
+6. Another photo → "buy it" → "Reply YES to pay … with VISA •••• 4242" → "yes" → paid.
+7. After each purchase: a "<Store> order DRP-… [demo receipt]" email, and the item in the closet.
+8. `/donate`: pick pieces → the nearest drop-off appears in the web chat and in iMessage.
+9. Buy on Recommended (one tap with the saved card), then in the web chat: "buy the other one
+   from the photo I texted you" → Approve & pay.
+
+Start over with `delete from users where phone = '+1XXXXXXXXXX';` in the Supabase SQL Editor.
+It removes that account's closet, chat, purchases and saved card (cascade). Never run it for
+the demo user.
 
 ## 2. Try the agent from the terminal
 
@@ -115,12 +156,15 @@ wipes everyone's chat history, so give the team a heads-up first.
 | Command | What it checks | Needs keys? |
 |---|---|---|
 | `npm test` | Buy-check verdicts for the demo, payment-approval rules (31 cases), opening hours | No |
-| `npm run typecheck` / `npm run lint` | Types and lint | No |
-| `BASE_URL=http://localhost:3000 npm run test:contract` | Every endpoint returns the documented shape (run with `npm run dev` up) | No |
+| `npm run typecheck` / `npm run lint` | Types and lint. On a fresh clone run `npx next typegen` (or start `npm run dev`) once first: it generates the `LayoutProps` / `RouteContext` types | No |
+| `BASE_URL=http://localhost:3000 npm run test:contract` | Every endpoint returns the documented shape. Start the server with `FORCE_FALLBACK=all npm run dev` to check the mocks without side effects; against live keys it writes to the shared demo user, runs a real Gmail receipt sync and uses ~12 Gemini requests | No |
 | `npm run smoke:gemini` | Live Gemini: JSON output, tool calling, vision | Gemini |
 | `npm run smoke:stripe` | Live Stripe test charge ($1.00, test mode only) | Stripe |
 | `npm run test:integrations` | Weather, Geoapify, Gmail (read + receipt send), Channel3, SerpAPI store links, iMessage link rendering and the image-download guard, with HTTP mocked | No |
 | `npm run test:integrations -- --live` | The same against the real services (read-only; skips any without keys) | The ones you have |
+
+Last run 2026-10-18 on the `frontend` branch: everything above passed (contract test in mock
+mode; lint has only `<img>` warnings).
 
 ## 4. iMessage (only one person runs this)
 
@@ -138,6 +182,12 @@ npm run worker   # terminal 2: iMessage bridge → should print "event":"connect
   iPhone number in `+1XXXXXXXXXX` format. Photon assigns each user a number to text, so check
   with him which one is yours.
 - Your iPhone must have iMessage on; Google Voice / virtual numbers don't work.
+- **Text from your phone number, not your Apple ID email.** The shared Photon number rejects
+  email senders with an automatic "we can't route it to the right agent" reply, and the
+  backend never sees the message. On the iPhone: Settings → Apps → Messages → Send & Receive →
+  "Start New Conversations From" → your number, then start a *new* conversation. A Mac only
+  works if your number shows up under Messages → Settings → iMessage ("You can be reached
+  at"); if it doesn't, use the iPhone.
 - iMessage delivers a photo and its caption as **two separate messages**. In the demo, send
   the photo first (or together), otherwise Dripy answers the text alone ("send me a photo").
 - What a photo reply looks like: Dripy's take, then the 3 products with price, store and link,
@@ -150,8 +200,11 @@ npm run worker   # terminal 2: iMessage bridge → should print "event":"connect
 
 ## 5. Gmail (receipts in and out, one-time setup)
 
-Dripy uses one Gmail account for the demo user: it reads order emails into the wardrobe
-(`POST /api/receipts/sync`) and, after each purchase, emails itself the store's demo receipt.
+Dripy uses one connected Gmail account (in the team `.env.local` it's Narayana's): it reads
+order emails into the wardrobe (`POST /api/receipts/sync`) and, after each purchase, sends the
+store's demo receipt from that account to the buyer's sign-up address (to itself for the demo
+user Alex). For the demo, sign up with the connected address to show the receipt in that
+inbox, or with your own Gmail to get it there.
 
 1. In `.env.local`: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (ask Narayana).
 2. Stop `npm run dev` (the sign-in borrows port 3000), run `npm run gmail:auth`, open the link,
@@ -177,7 +230,7 @@ src/lib/pipelines/    Buy-check scoring, image analysis, receipts (in + demo pur
 src/lib/integrations/ Stripe, Visa, Channel3, SerpAPI, Gmail, Open-Meteo weather, payment-rail switch
 worker/               Photon iMessage bridge
 supabase/             SQL migrations, seed data, sample receipt emails
-mocks/                Example response for every endpoint
+mocks/                Example response for every endpoint (keep it at the root: the mock fallback imports it)
 scripts/              Seed, tests, smoke tests
 ```
 
@@ -203,5 +256,13 @@ components with `npx shadcn add <name>`. Please don't edit `src/lib` or
 | Purchase works but no receipt email arrives (`fallbacks` has `gmail_send`) | The Gmail token is read-only. Stop `npm run dev`, run `npm run gmail:auth`, approve both permissions, and replace `GMAIL_REFRESH_TOKEN`. The item is still added to the wardrobe. |
 | `npm install -g` fails with `reading 'edgesOut'` | npm bug; add `--legacy-peer-deps`. |
 | Worker: `PHOTON_PROJECT_ID must be the project's UUID` | You have a Photon **beta** (`pho_prj_…`) id. Use the stable project from app.photon.codes. |
+| iMessage auto-reply: "we can't route it to the right agent … email-based iMessage handle" | You texted from your Apple ID email. Send from your phone number in a new conversation (section 4). |
+| Sign-up says Dripy's iMessage number isn't configured | Set `DRIPY_IMESSAGE_HANDLE` in `.env.local` (not `.env.example`) and restart `npm run dev`. |
+| Card page fails with "save card (run supabase/migrations/0003_demo_card.sql …)" | Run that migration in the Supabase SQL Editor. |
+| Links Dripy texts don't open on the phone, or the checkout page loads but the form does nothing | `APP_URL` is `localhost` or an old tunnel URL. Set it to the current tunnel URL and restart `npm run dev` (see "Testing on your phone"). |
+| Every API route returns an HTML error page; the log says `Can't resolve '../../mocks/'` | The `mocks/` folder was moved or deleted. Restore it at the repo root: `git checkout -- mocks`. |
+| `tsc`: `Cannot find name 'LayoutProps'` / `'RouteContext'` | Generated types are missing on a fresh clone: `npx next typegen` (or start `npm run dev` once). |
+| `npm ci` warns `install scripts … not yet covered by allowScripts` | npm 11 skips dependency install scripts by default; the app and all tests work without them. |
+| `npm: command not found` after `brew install node` | Run `eval "$(/opt/homebrew/bin/brew shellenv)"`, or add that line to `~/.zprofile`. |
 
 **Never commit `.env.local` or paste keys into chat/issues.** It's gitignored; keep it that way.
